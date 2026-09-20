@@ -1,19 +1,30 @@
 /* Firebreak — dark schematic chrome. Surfaces #0a0b0d/#0f1115, hairlines only,
    no cards, mono for every number and label. The fire is the only saturated
-   element on screen. */
+   element on screen.
+   Body font is Selawik (Microsoft, SIL OFL 1.1), vendored locally, no CDN. */
+@font-face {
+  font-family: Selawik; src: url(vendor/fonts/selawik-400.woff2) format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: Selawik; src: url(vendor/fonts/selawik-600.woff2) format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: Selawik; src: url(vendor/fonts/selawik-700.woff2) format("woff2");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
 :root {
   --bg: #0a0b0d; --panel: #0f1115;
   --ink: #e8e8e6; --muted: #8a8f98;
   --line: rgba(255, 255, 255, 0.08);
   --green: #3ddc84; --red: #ff3b3b; --fire: #ff7a1a;
-  --mono: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace;
+  --sans: Selawik, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow: hidden; }
-body {
-  background: var(--bg); color: var(--ink);
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
 #map { position: absolute; inset: 0 340px 0 0; background: var(--bg); }
@@ -32,7 +43,7 @@ body {
 
 /* town selector: small mono dropdown, top-left of the map */
 #town-select {
-  position: absolute; left: 12px; top: 12px; z-index: 1300;
+  position: absolute; left: 14px; top: 40px; z-index: 1300;
   background: rgba(10, 11, 13, .88); color: var(--ink);
   border: 1px solid var(--line); border-radius: 2px;
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em;
@@ -40,11 +51,11 @@ body {
 }
 #town-select[hidden] { display: none; }
 body.intro #town-select { display: none; }
-body.has-towns #caption { top: 52px; }
+body.has-towns #caption { top: 76px; }
 
 /* walkthrough caption card: top-left over the map — dark, mono, no border */
 #caption {
-  position: absolute; left: 12px; top: 12px; z-index: 1200; max-width: 380px;
+  position: absolute; left: 14px; top: 40px; z-index: 1200; max-width: 380px;
   padding: 14px 16px 12px; background: rgba(10, 11, 13, .88); border-radius: 2px;
 }
 #caption[hidden] { display: none; }
@@ -221,29 +232,53 @@ body.intro #panel, body.intro #legend { display: none; }
 body.intro .leaflet-control-container, body.intro .ign { display: none; }
 
 /* ---- intro title card ---- */
+/* Title card sits on solid black, not over the map: the word and the heat around
+   it are the only things on screen, and it cuts straight into the opening. */
 #intro {
   position: fixed; inset: 0; z-index: 2000; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   text-align: center; opacity: 1; transition: opacity .6s ease;
+  background: var(--bg);
 }
+#intro-inner { display: flex; flex-direction: column; align-items: center; }
 #intro.gone { opacity: 0; pointer-events: none; }
-#intro h1 {
-  margin: 0; color: #ffffff; font-weight: 700; font-family: var(--mono);
-  font-size: clamp(64px, 11vw, 150px); letter-spacing: .18em;
-  text-indent: .18em;   /* recenters wide tracking */
-  text-shadow: 0 2px 32px rgba(0, 0, 0, .85), 0 0 4px rgba(0, 0, 0, .6);
+#heat-defs { position: absolute; width: 0; height: 0; }
+
+/* Title: white word, still and crisp. A red copy behind it is blurred and pushed
+   through feTurbulence + feDisplacementMap, animated, so heat waves off the edge. */
+#title-wrap { position: relative; display: inline-block; }
+#title-back, #title-front {
+  margin: 0; font-family: var(--sans); font-weight: 700;
+  font-size: clamp(64px, 12vw, 172px); letter-spacing: .16em;
+  text-indent: .16em;   /* recenters the wide tracking */
+  line-height: 1.05; white-space: nowrap;
 }
-#intro p {
-  margin: 14px 0 0; color: #d9dbde; font-size: 15px;
-  text-shadow: 0 1px 12px rgba(0, 0, 0, .9);
+#title-back {
+  position: absolute; inset: 0; color: #ff2a1a;
+  -webkit-text-stroke: 7px #ff2a1a;   /* fattened so red reaches past the white */
+  filter: blur(12px) url(#heat); will-change: filter;
 }
+#title-front { position: relative; color: #ffffff; }
 #intro-run {
-  margin-top: 36px; padding: 12px 22px; cursor: pointer;
-  background: rgba(10, 11, 13, .55); color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, .5); border-radius: 2px;
-  font: 13px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+  margin-top: 44px; padding: 12px 26px; cursor: pointer;
+  background: none; color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, .55); border-radius: 2px;
+  font: 12px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
 }
-#intro-run:hover { border-color: #ffffff; }
+#intro-run:hover { border-color: #ffffff; background: rgba(255, 255, 255, .06); }
+
+/* Logo: one horizontal line with a clean break in it, plus the wordmark */
+#brand {
+  position: absolute; left: 14px; top: 13px; z-index: 1250;
+  display: flex; align-items: center; gap: 9px; pointer-events: none;
+}
+.brand-mark { width: 26px; height: 5px; overflow: visible; }
+.brand-mark path { stroke: var(--ink); stroke-width: 2; }
+.brand-word {
+  font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+  letter-spacing: .2em; color: var(--ink);
+}
+body.intro #brand { display: none; }
 
 /* ignition marker: amber dot, 2 s pulse, mono label */
 .ign { pointer-events: none; }

@@ -619,7 +619,7 @@ async function main() {
       sel.hidden = false;
       document.body.classList.add('has-towns');
       sel.innerHTML = towns.map(t =>
-        `<option value="${t.id}"${t.id === entry.id ? ' selected' : ''}>${t.name} — ${t.event}</option>`).join('');
+        `<option value="${t.id}"${t.id === entry.id ? ' selected' : ''}>${t.name} · ${t.event}</option>`).join('');
       sel.onchange = () => {
         const p = new URLSearchParams(location.search);
         p.set('town', sel.value);
@@ -650,7 +650,7 @@ async function main() {
 
   const windDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(meta.wind.from_deg / 45) % 8];
   const statusBits = mode => [
-    mode, `DATA: ${DATA_DIR.toUpperCase()}`, `${meta.grid.cell_m} M CELLS`,
+    mode, `${Math.round(meta.grid.cell_m)} M CELLS`,
     `WIND ${windDir} ${meta.wind.speed_mph} MPH`,
   ].join(' · ');
   setupBasemap(map, bounds, mode => {
@@ -673,7 +673,7 @@ async function main() {
     hx[i] = Math.min(W2 - 3, Math.max(1, Math.round(gx) - 1));
     hy[i] = Math.min(H2 - 3, Math.max(1, Math.round(gy) - 1));
   });
-  $('homes-label').textContent = `02 — Homes saved (of ${nB.toLocaleString()})`;
+  $('homes-label').textContent = `02 HOMES SAVED / ${nB.toLocaleString()}`;
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
   fire.setHomes(hx, hy, states);
@@ -743,7 +743,7 @@ async function main() {
   function updateStats() {
     const st = model.steps[state.step];
     setNum($('stat-saved'), lastCounts.saved, fmtInt);
-    const mb = st.minutesBought == null ? '—' : `+${Math.round(st.minutesBought)}`;
+    const mb = st.minutesBought == null ? '0' : `+${Math.round(st.minutesBought)}`;
     $('stat-line').textContent = `SPENT ${fmtMoney(st.cost)} · ${mb} MIN EVACUATION`;
   }
 
@@ -769,7 +769,7 @@ async function main() {
 
   function updateReadout() {
     const st = model.steps[state.step];
-    const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
+    const mb = st.minutesBought == null ? '0' : Math.round(st.minutesBought);
     $('budget-readout').textContent =
       `${fmtM2(state.budget)} · ${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ` +
       `${st.saved.toLocaleString()} homes saved · ${mb} min bought`;
@@ -785,7 +785,7 @@ async function main() {
       const st = model.steps[s];
       chart.mark(st.cost, st.saved,
         s > 0 ? `${fmtMoney(st.cost)} saves ${st.saved} homes`
-              : '$0 saves 0 homes — move the budget slider');
+              : 'Move the budget slider.');
       render();
     }
     updateReadout();
@@ -888,16 +888,16 @@ async function main() {
     showGhost(f === 'burn1' || f === 'done');
     pointAtBudget(f === 'pick');
     if (f === 'armed') setCaption(openerLine, 'Watch it happen →');
-    if (f === 'burn0') setCaption('The fire spreads southwest with the wind — 12 hours in 20 seconds. Every red square is a home burning.', null);
+    if (f === 'burn0') setCaption('Twelve hours of fire in twenty seconds. Each red square is a home.', null);
     if (f === 'pick') setCaption(
       `${lastCounts.hit.toLocaleString()} of ${nB.toLocaleString()} homes gone. ` +
-      `Now give ${townName} a budget for fuel breaks — drag the slider.`, null);
+      `What would a budget have bought?`, null);
     if (f === 'burn1') setCaption('Same fire. Your fuel breaks are the pale strips of cleared ground.', null);
     if (f === 'done') {
       const st = model.steps[state.step];
-      const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
+      const mb = st.minutesBought == null ? 0 : Math.round(st.minutesBought);
       setCaption(`${fmtMoney(st.cost)} · ${lastCounts.saved.toLocaleString()} homes saved · ` +
-        `${mb} minutes of evacuation time bought.`, 'Try another budget');
+        `${mb} min evacuation time.`, 'Try another budget');
     }
     if (f === 'free') setCaption(null, null);
     updateStats();
@@ -939,7 +939,7 @@ async function main() {
       const bk = braster.breaks[bi];
       tip.textContent =
         `BREAK ${bk.props.id} · STEP ${bk.step} · ${fmtMoney(bk.props.cost)} · ` +
-        `${savedByBreak.get(bk.props.id) ?? '—'} HOMES PROTECTED`;
+        `${savedByBreak.get(bk.props.id) ?? 0} HOMES PROTECTED`;
       tip.style.left = `${e.containerPoint.x + 14}px`;
       tip.style.top = `${e.containerPoint.y + 14}px`;
     }
@@ -971,8 +971,28 @@ async function main() {
   if (SKIP_INTRO) startApp(false);
 }
 
+/* Title-card heat haze: drift the turbulence seed and baseFrequency so the red
+   copy behind the white word waves. Slow, no flicker, stops once the card is gone. */
+function animateHeat() {
+  const turb = $('heat-turb');
+  if (!turb) return;
+  const intro = $('intro');
+  let t = 0;
+  const tick = () => {
+    if (!intro.isConnected || intro.classList.contains('gone')) return;
+    t += 1;
+    turb.setAttribute('seed', String(2 + ((t / 7) | 0) % 64));
+    const fx = 0.011 + Math.sin(t / 95) * 0.0035;
+    const fy = 0.026 + Math.cos(t / 71) * 0.008;
+    turb.setAttribute('baseFrequency', `${fx.toFixed(5)} ${fy.toFixed(5)}`);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+animateHeat();
+
 main().catch(err => {
-  $('story').textContent = `FAILED to load web/${DATA_DIR}/ — ${err.message}`;
+  $('story').textContent = `Could not load web/${DATA_DIR}. ${err.message}`;
   const ir = $('intro-run');
   if (ir) ir.textContent = `FAILED: ${err.message}`;
   console.error(err);
