@@ -1,15 +1,90 @@
-/* Skeleton styles only — Arya owns the real look (DESIGN.md). */
-html, body { height: 100%; margin: 0; }
-#map { position: absolute; top: 0; left: 0; bottom: 0; right: 340px; background: #000; }
-#panel {
-  position: absolute; top: 0; right: 0; bottom: 0; width: 340px;
-  box-sizing: border-box; padding: 12px; overflow: auto;
-  background: #0f1115; color: #e6e6e6;
+/* Firebreak — dark one-screen chrome per DESIGN.md. */
+:root {
+  --bg: #0f1115; --ink: #e6e6e6; --muted: #8a8f98;
+  --line: #262b33; --card: #151922;
+  --green: #3ddc84; --red: #ff3b3b; --fire: #ff7a1a;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body {
+  background: var(--bg); color: var(--ink);
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-#panel h1 { margin: 0 0 4px; font-size: 20px; }
-#stats div { margin: 4px 0; }
-#panel label { display: block; margin: 12px 0 4px; }
-#panel input[type="range"], #panel select { width: 100%; }
-.note { color: #8a8f98; font-size: 12px; }
-.fire-overlay { image-rendering: pixelated; }
+
+#map { position: absolute; inset: 0 340px 0 0; background: #0a0c10; }
+
+/* ---- right panel ---- */
+#panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 340px;
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  overflow-y: auto; background: var(--bg); border-left: 1px solid var(--line);
+}
+#panel h1 { margin: 0; font-size: 22px; letter-spacing: .3px; }
+#story { margin: 4px 0 0; font-size: 12px; color: var(--muted); line-height: 1.45; }
+
+#stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 8px; }
+.stat-value { font-size: 23px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-label {
+  margin-top: 3px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); display: flex; align-items: center; gap: 4px;
+}
+.swatch { width: 7px; height: 7px; border-radius: 2px; flex: 0 0 auto; }
+
+.control-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.control-value { color: var(--ink); font-size: 12px; text-transform: none; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; margin: 8px 0 2px; accent-color: var(--green); }
+#time { margin: 0; accent-color: var(--fire); }
+.ticks { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted); }
+.time-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+#play {
+  width: 34px; height: 28px; flex: 0 0 auto; font-size: 12px; line-height: 1;
+  background: var(--card); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; cursor: pointer;
+}
+#play:hover { border-color: var(--muted); }
+
+/* ---- curve (inline SVG) ---- */
+#curve { width: 100%; height: auto; display: block; margin-top: 6px; }
+.curve-line { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; }
+#curve .grid { stroke: #1d222b; }
+#curve .axis { stroke: #2a3038; }
+#curve .lbl { fill: var(--muted); font-size: 9px; }
+#curve .mark { stroke: rgba(230, 230, 230, .45); stroke-dasharray: 3 3; }
+#curve-dot { fill: var(--green); stroke: var(--bg); stroke-width: 2; }
+
+#simplifications { border-top: 1px solid var(--line); padding-top: 10px; }
+#simplifications summary {
+  cursor: pointer; color: var(--muted);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+}
+#simp-list {
+  margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted);
+  line-height: 1.5; max-height: 160px; overflow-y: auto;
+}
+
+footer { margin-top: auto; display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--muted); }
+
+/* ---- map overlays ---- */
+#legend {
+  position: absolute; left: 8px; bottom: 8px; z-index: 1000;
+  display: flex; gap: 8px; padding: 5px 8px; font-size: 10px; color: var(--muted);
+  background: rgba(15, 17, 21, .85); border: 1px solid var(--line); border-radius: 6px;
+}
+#legend[hidden] { display: none; }
+.chip { display: flex; align-items: center; gap: 4px; }
+.chip i { width: 9px; height: 9px; border-radius: 2px; }
+
+.fire-canvas { image-rendering: pixelated; }
+.fire-canvas, .dots-canvas { pointer-events: none; }
+
+/* dark-friendly Leaflet chrome */
+.leaflet-container { background: #0a0c10; }
+.leaflet-bar a { background: var(--card); color: var(--ink); border-bottom: 1px solid var(--line); }
+.leaflet-bar a:hover, .leaflet-bar a:focus { background: #1b2029; }
+.leaflet-bar a.leaflet-disabled { background: var(--card); color: #4a4f58; }
+.leaflet-control-attribution { background: rgba(15, 17, 21, .7); color: var(--muted); }
+.leaflet-control-attribution a { color: var(--muted); }

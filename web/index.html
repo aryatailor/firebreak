@@ -9,24 +9,54 @@
 </head>
 <body>
 <div id="map"></div>
-<div id="panel">
-  <h1>Firebreak</h1>
-  <p id="story">loading…</p>
-  <div id="stats">
-    <div>Buildings hit: <span id="stat-hit">–</span></div>
-    <div>Spent: <span id="stat-spent">–</span></div>
-    <div>Houses saved: <span id="stat-saved">–</span></div>
-  </div>
-  <label>Budget
-    <select id="budget"></select>
-  </label>
-  <label>Time <span id="time-label">0 min</span>
-    <input id="time" type="range" min="0" max="720" value="0" step="5">
-  </label>
-  <button id="play" type="button">Play</button>
-  <p class="note">Skeleton only — zero styling on purpose; DESIGN.md is the real spec.
-     Data: <code id="data-dir"></code> (see CONTRACT.md).</p>
-</div>
+<div id="legend" hidden></div>
+<aside id="panel">
+  <header>
+    <h1>Firebreak</h1>
+    <p id="story">loading…</p>
+  </header>
+
+  <section id="stats" aria-live="polite">
+    <div class="stat">
+      <div class="stat-value" id="stat-hit">–</div>
+      <div class="stat-label"><span class="swatch" style="background:#ff3b3b"></span><span id="stat-hit-label">buildings hit</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="stat-spent">–</div>
+      <div class="stat-label">spent</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="stat-saved">–</div>
+      <div class="stat-label"><span class="swatch" style="background:#3ddc84"></span>houses saved</div>
+    </div>
+  </section>
+
+  <section class="control">
+    <div class="control-head"><label for="budget">Budget</label><span class="control-value" id="budget-label">$0</span></div>
+    <input id="budget" type="range" min="0" max="1" step="1" value="0">
+    <div class="ticks" id="budget-ticks"></div>
+  </section>
+
+  <section class="control">
+    <div class="control-head"><label for="time">Time after ignition</label><span class="control-value" id="time-label">0h 00m</span></div>
+    <div class="time-row">
+      <button id="play" type="button" aria-label="Play">&#9654;&#xFE0E;</button>
+      <input id="time" type="range" min="0" max="720" step="5" value="0">
+    </div>
+  </section>
+
+  <section class="control">
+    <div class="control-head"><label>Houses saved vs $ spent</label><span class="control-value" id="curve-readout"></span></div>
+    <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative houses saved"></svg>
+  </section>
+
+  <details id="simplifications">
+    <summary>Real vs simplified</summary>
+    <ul id="simp-list"></ul>
+  </details>
+
+  <footer><span id="basemap-status">basemap: …</span><span id="data-tag"></span></footer>
+</aside>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>
 </body>

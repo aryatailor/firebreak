@@ -1,9 +1,12 @@
-/* Firebreak — minimal skeleton. Arya: this file is yours; DESIGN.md is the real spec.
-   This exists only to prove the data contract (CONTRACT.md) decodes and aligns on the
-   map. Replace it freely. Switch to real pipeline output: DATA_DIR = 'data'. */
+/* Firebreak — renders web/<DATA_DIR>/ (CONTRACT.md) as the one-screen demo (DESIGN.md).
+   No frameworks, no CDN; Leaflet is vendored. Switching to the real pipeline output is
+   the one-line DATA_DIR flip. Append ?offline=1 to force the offline basemap path. */
 
 const DATA_DIR = 'mock';
 const UNREACHED = 65535;
+const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const FORCE_OFFLINE = new URLSearchParams(location.search).has('offline');
+const $ = id => document.getElementById(id);
 
 async function loadJSON(name) {
   const r = await fetch(`${DATA_DIR}/${name}`);
@@ -11,161 +14,333 @@ async function loadJSON(name) {
   return r.json();
 }
 
-// CONTRACT.md: base64 of little-endian uint16, row-major, top row = north.
+/* CONTRACT.md: base64 of little-endian uint16, row-major, row 0 = north. */
 function decodeGrid(b64, rows, cols) {
   const bin = atob(b64);
   if (bin.length !== rows * cols * 2) {
     throw new Error(`grid is ${bin.length} bytes, expected ${rows * cols * 2}`);
   }
-  const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
   const dv = new DataView(bytes.buffer);
   const out = new Uint16Array(rows * cols);
   for (let i = 0; i < out.length; i++) out[i] = dv.getUint16(i * 2, true);
   return out;
 }
 
-// Fire age ramp (DESIGN.md): just-ignited #ffd166 → #ff7a1a → #c1121f → #2b2b2b
-const RAMP = [[0xff, 0xd1, 0x66], [0xff, 0x7a, 0x1a], [0xc1, 0x12, 0x1f], [0x2b, 0x2b, 0x2b]];
-function rampColor(ageMin) {
-  const f = Math.min(ageMin / 180, 1) * (RAMP.length - 1);
-  const i = Math.min(Math.floor(f), RAMP.length - 2);
-  const t = f - i;
-  return [0, 1, 2].map(k => Math.round(RAMP[i][k] + (RAMP[i + 1][k] - RAMP[i][k]) * t));
+/* Fire age ramp (DESIGN.md): #ffd166 → #ff7a1a → #c1121f → #2b2b2b across RAMP_SPAN
+   minutes of age, precomputed as a per-minute RGB lookup table. */
+const RAMP_SPAN = 180;
+const RAMP = (() => {
+  const stops = [[255, 209, 102], [255, 122, 26], [193, 18, 31], [43, 43, 43]];
+  const lut = new Uint8Array((RAMP_SPAN + 1) * 3);
+  for (let m = 0; m <= RAMP_SPAN; m++) {
+    const f = (m / RAMP_SPAN) * (stops.length - 1);
+    const i = Math.min(Math.floor(f), stops.length - 2), t = f - i;
+    for (let k = 0; k < 3; k++) {
+      lut[m * 3 + k] = Math.round(stops[i][k] + (stops[i + 1][k] - stops[i][k]) * t);
+    }
+  }
+  return lut;
+})();
+
+const fmtMoney = n =>
+  n >= 1e6 ? `$${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}k` : `$${n}`;
+const fmtTime = m => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+
+/* Fire canvas layer: one pixel per grid cell, stretched over meta.bounds
+   (image-rendering: pixelated keeps cells crisp). Positioning mirrors L.ImageOverlay. */
+const FireLayer = L.Layer.extend({
+  initialize(bounds, rows, cols, opts) {
+    L.setOptions(this, opts);
+    this._b = bounds; this._rows = rows; this._cols = cols;
+  },
+  onAdd() {
+    const c = this._canvas = L.DomUtil.create('canvas', 'fire-canvas leaflet-zoom-animated');
+    c.width = this._cols; c.height = this._rows;
+    this._ctx = c.getContext('2d');
+    this._img = this._ctx.createImageData(this._cols, this._rows);
+    this.getPane().appendChild(c);
+    this._reset();
+  },
+  onRemove() { this._canvas.remove(); },
+  getEvents() {
+    const ev = { zoom: this._reset, viewreset: this._reset };
+    if (this._zoomAnimated) ev.zoomanim = this._animateZoom;
+    return ev;
+  },
+  _reset() {
+    const nw = this._map.latLngToLayerPoint(this._b.getNorthWest());
+    const se = this._map.latLngToLayerPoint(this._b.getSouthEast());
+    L.DomUtil.setPosition(this._canvas, nw);
+    this._canvas.style.width = `${se.x - nw.x}px`;
+    this._canvas.style.height = `${se.y - nw.y}px`;
+  },
+  _animateZoom(e) {
+    const nb = this._map._latLngBoundsToNewLayerBounds(this._b, e.zoom, e.center);
+    L.DomUtil.setTransform(this._canvas, nb.min, this._map.getZoomScale(e.zoom));
+  },
+  draw(arrival, t) {
+    const d = this._img.data;
+    for (let i = 0; i < arrival.length; i++) {
+      const a = arrival[i], o = i * 4;
+      if (a > t) { d[o + 3] = 0; continue; }      // unburned (incl. 65535 = never)
+      const k = Math.min(t - a, RAMP_SPAN) * 3;
+      d[o] = RAMP[k]; d[o + 1] = RAMP[k + 1]; d[o + 2] = RAMP[k + 2];
+      d[o + 3] = 191;                             // 0.75 alpha (DESIGN.md)
+    }
+    this._ctx.putImageData(this._img, 0, 0);
+  },
+});
+
+/* Building dots: a viewport-sized canvas (scales to 10k+ points where per-point DOM
+   markers would not). `hits` is a Uint8Array shared with the app's render loop. */
+const DotsLayer = L.Layer.extend({
+  initialize(latlngs, hits, opts) {
+    L.setOptions(this, opts);
+    this._ll = latlngs; this._hits = hits;
+    this._x = new Float32Array(latlngs.length);
+    this._y = new Float32Array(latlngs.length);
+  },
+  onAdd() {
+    this._canvas = L.DomUtil.create('canvas', 'dots-canvas leaflet-zoom-animated');
+    this._ctx = this._canvas.getContext('2d');
+    this.getPane().appendChild(this._canvas);
+    this._reset();
+  },
+  onRemove() { this._canvas.remove(); },
+  getEvents() {
+    const ev = { moveend: this._reset, viewreset: this._reset, resize: this._reset };
+    if (this._zoomAnimated) ev.zoomanim = this._animateZoom;
+    return ev;
+  },
+  _reset() {
+    const tl = this._map.containerPointToLayerPoint([0, 0]);
+    const s = this._map.getSize();
+    L.DomUtil.setPosition(this._canvas, tl);
+    if (this._canvas.width !== s.x || this._canvas.height !== s.y) {
+      this._canvas.width = s.x; this._canvas.height = s.y;
+    }
+    for (let i = 0; i < this._ll.length; i++) {
+      const p = this._map.latLngToContainerPoint(this._ll[i]);
+      this._x[i] = p.x; this._y[i] = p.y;
+    }
+    this.redraw();
+  },
+  _animateZoom(e) {
+    const scale = this._map.getZoomScale(e.zoom);
+    const off = this._map._getCenterOffset(e.center)._multiplyBy(-scale)
+      .subtract(this._map._getMapPanePos());
+    L.DomUtil.setTransform(this._canvas, off, scale);
+  },
+  redraw() {
+    const { width: w, height: h } = this._canvas;
+    const ctx = this._ctx, x = this._x, y = this._y, hits = this._hits;
+    ctx.clearRect(0, 0, w, h);
+    for (let pass = 0; pass < 2; pass++) {         // unhit below, hit on top
+      ctx.fillStyle = pass ? '#ff3b3b' : 'rgba(255,255,255,0.4)';
+      for (let i = 0; i < x.length; i++) {
+        if (hits[i] !== pass) continue;
+        if (x[i] < -3 || y[i] < -3 || x[i] > w + 3 || y[i] > h + 3) continue;
+        ctx.fillRect(x[i] - 1.5, y[i] - 1.5, 3, 3);  // 3 px dots (DESIGN.md)
+      }
+    }
+  },
+});
+
+/* Basemap: the offline PNG is the safe default; satellite tiles are the upgrade if a
+   probe tile loads within 3 s (DESIGN.md). Any later tileerror falls back to the PNG. */
+function setupBasemap(map, bounds, onMode) {
+  const png = L.imageOverlay(`${DATA_DIR}/basemap.png`, bounds).addTo(map);
+  onMode('offline basemap');
+  if (FORCE_OFFLINE) { onMode('offline basemap (forced)'); return; }
+  let settled = false;
+  const timer = setTimeout(() => { settled = true; }, 3000);
+  const probe = new Image();
+  probe.onerror = () => { settled = true; };
+  probe.onload = () => {
+    if (settled) return;
+    settled = true; clearTimeout(timer);
+    const tiles = L.tileLayer(TILE_URL, { maxZoom: 17, attribution: 'Imagery © Esri' }).addTo(map);
+    tiles.on('load', () => {
+      if (map.hasLayer(png)) { map.removeLayer(png); onMode('satellite (online)'); }
+    });
+    tiles.on('tileerror', () => {
+      if (!map.hasLayer(png)) { png.addTo(map); onMode('offline basemap (tiles failed)'); }
+    });
+  };
+  probe.src = TILE_URL.replace('{z}', 0).replace('{y}', 0).replace('{x}', 0) + `?probe=${Date.now()}`;
+}
+
+/* Inline SVG: step curve of cumulative cost vs cumulative houses saved (curve.json),
+   with the current budget position marked. Returns {mark} to move the marker. */
+function buildCurve(points) {
+  const W = 308, H = 150, ML = 34, MR = 8, MT = 8, MB = 18;
+  const pts = [{ cumulative_cost: 0, cumulative_saved: 0 }, ...points];
+  const last = pts[pts.length - 1];
+  const xmax = Math.max(last.cumulative_cost, 1), ymax = Math.max(last.cumulative_saved, 1);
+  const X = c => ML + (c / xmax) * (W - ML - MR);
+  const Y = s => H - MB - (s / ymax) * (H - MB - MT);
+  let d = `M${X(0)} ${Y(0)}`;
+  for (const p of pts.slice(1)) {
+    d += `H${X(p.cumulative_cost).toFixed(1)}V${Y(p.cumulative_saved).toFixed(1)}`;
+  }
+  const svg = $('curve');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML =
+    `<line class="grid" x1="${ML}" y1="${Y(ymax)}" x2="${W - MR}" y2="${Y(ymax)}"/>` +
+    `<line class="grid" x1="${ML}" y1="${Y(ymax / 2)}" x2="${W - MR}" y2="${Y(ymax / 2)}"/>` +
+    `<line class="axis" x1="${ML}" y1="${Y(0)}" x2="${W - MR}" y2="${Y(0)}"/>` +
+    `<line class="axis" x1="${ML}" y1="${Y(0)}" x2="${ML}" y2="${MT}"/>` +
+    `<text class="lbl" x="${ML - 4}" y="${Y(0) + 3}" text-anchor="end">0</text>` +
+    `<text class="lbl" x="${ML - 4}" y="${Y(ymax / 2) + 3}" text-anchor="end">${Math.round(ymax / 2)}</text>` +
+    `<text class="lbl" x="${ML - 4}" y="${Y(ymax) + 3}" text-anchor="end">${ymax}</text>` +
+    `<text class="lbl" x="${ML}" y="${H - 4}">$0</text>` +
+    `<text class="lbl" x="${W - MR}" y="${H - 4}" text-anchor="end">${fmtMoney(xmax)}</text>` +
+    `<path class="curve-line" d="${d}"/>` +
+    `<line id="curve-mark" class="mark" x1="0" x2="0" y1="${MT}" y2="${Y(0)}"/>` +
+    `<circle id="curve-dot" r="4"/>`;
+  let selText = '';
+  const near = c => pts.reduce((b, p) =>
+    Math.abs(p.cumulative_cost - c) < Math.abs(b.cumulative_cost - c) ? p : b);
+  svg.onmousemove = e => {
+    const r = svg.getBoundingClientRect();
+    const cost = ((e.clientX - r.left) * (W / r.width) - ML) / (W - ML - MR) * xmax;
+    const p = near(cost);
+    $('curve-readout').textContent = `${fmtMoney(p.cumulative_cost)} → ${p.cumulative_saved} saved`;
+  };
+  svg.onmouseleave = () => { $('curve-readout').textContent = selText; };
+  return {
+    mark(cost, saved, label) {
+      $('curve-mark').setAttribute('x1', X(cost));
+      $('curve-mark').setAttribute('x2', X(cost));
+      $('curve-dot').setAttribute('cx', X(cost));
+      $('curve-dot').setAttribute('cy', Y(saved));
+      selText = label;
+      $('curve-readout').textContent = label;
+    },
+  };
 }
 
 async function main() {
   const meta = await loadJSON('meta.json');
-  const [baseline, solutions, curve, buildingsFC] = await Promise.all([
-    loadJSON('baseline.json'), loadJSON('solutions.json'),
-    loadJSON('curve.json'), loadJSON('buildings.geojson'),
+  const [baseline, solutions, curve, buildingsFC, legend] = await Promise.all([
+    loadJSON('baseline.json'), loadJSON('solutions.json'), loadJSON('curve.json'),
+    loadJSON('buildings.geojson'), loadJSON('fuel_legend.json'),
   ]);
-  // curve.json feeds the panel's SVG chart (DESIGN.md) — not drawn in this skeleton.
-  console.log(`curve.json: ${curve.points.length} greedy steps loaded`);
-
-  const { rows, cols } = meta.grid;
-  const b = meta.bounds;
+  const { rows, cols } = meta.grid, b = meta.bounds;
   const bounds = L.latLngBounds([b.south, b.west], [b.north, b.east]);
 
-  const map = L.map('map', { zoomSnap: 0.25 });
-  map.fitBounds(bounds);
-  // Online basemap. Offline, tiles just never load and basemap.png below covers the
-  // area of interest. DESIGN.md specifies the real 3 s auto-detect fallback.
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 17, attribution: 'Imagery © Esri' }).addTo(map);
-  L.imageOverlay(`${DATA_DIR}/basemap.png`, bounds, { opacity: 0.85 }).addTo(map);
+  $('story').textContent = meta.story;
+  $('data-tag').textContent = `data: web/${DATA_DIR}/`;
+  $('legend').innerHTML = legend.map(g =>
+    `<span class="chip"><i style="background:${g.color}"></i>${g.group}</span>`).join('');
+  $('simp-list').innerHTML = meta.simplifications.map(s => `<li>${s}</li>`).join('');
 
-  // Fire layer: render the arrival grid to a canvas (one pixel per cell), show it as
-  // an image overlay placed with meta.bounds. Row 0 = north = canvas y 0, so
-  // row-major ImageData maps 1:1 with no flipping.
-  const canvas = document.createElement('canvas');
-  canvas.width = cols;
-  canvas.height = rows;
-  const ctx = canvas.getContext('2d');
-  const fire = L.imageOverlay(canvas.toDataURL(), bounds,
-    { opacity: 0.75, className: 'fire-overlay' }).addTo(map);
+  const map = L.map('map', { zoomSnap: 0.25, maxZoom: 17 });
+  map.fitBounds(bounds, { padding: [10, 10] });
+  ['fire', 'dots', 'vec'].forEach((n, i) => { map.createPane(n).style.zIndex = 405 + i; });
 
-  L.marker([meta.ignition.lat, meta.ignition.lon]).addTo(map)
-    .bindTooltip(meta.ignition.label);
-
-  const dots = buildingsFC.features.map(f => {
-    const [lon, lat] = f.geometry.coordinates;
-    const m = L.circleMarker([lat, lon],
-      { radius: 2, stroke: false, fillColor: '#ffffff', fillOpacity: 0.4 }).addTo(map);
-    return { m, cell: f.properties.row * cols + f.properties.col, hit: false };
+  setupBasemap(map, bounds, mode => {
+    $('basemap-status').textContent = mode;
+    $('legend').hidden = !mode.startsWith('offline');
   });
 
-  const state = {
-    arrival: decodeGrid(baseline.arrival_min_b64, rows, cols),
-    sol: null,               // null = baseline ($0)
-    t: meta.horizon_min,
-  };
+  // Buildings → flat arrays; `hits` is shared with DotsLayer.
+  const feats = buildingsFC.features, nB = feats.length;
+  const cells = new Uint32Array(nB), hits = new Uint8Array(nB);
+  const lls = feats.map((f, i) => {
+    cells[i] = f.properties.row * cols + f.properties.col;
+    return L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]);
+  });
+  $('stat-hit-label').textContent = `buildings hit of ${nB.toLocaleString()}`;
+
+  const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
+  const dots = new DotsLayer(lls, hits, { pane: 'dots' }).addTo(map);
+  const vecRenderer = L.svg({ pane: 'vec' });
+  L.circleMarker([meta.ignition.lat, meta.ignition.lon], {
+    renderer: vecRenderer, radius: 5, color: '#ffd166', weight: 2,
+    fillColor: '#ff7a1a', fillOpacity: 0.9,
+  }).addTo(map).bindTooltip(`Ignition — ${meta.ignition.label}`);
+
+  const grids = [decodeGrid(baseline.arrival_min_b64, rows, cols)];  // [0]=baseline
+  const gridFor = i =>
+    grids[i] || (grids[i] = decodeGrid(solutions[i - 1].arrival_min_b64, rows, cols));
+
+  const chart = buildCurve(curve.points);
+  const state = { t: 0, arrival: grids[0] };
   let breaksLayer = null;
 
-  function renderFire() {
-    const img = ctx.createImageData(cols, rows);
-    const d = img.data, a = state.arrival, t = state.t;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] === UNREACHED || a[i] > t) continue;   // unburned: transparent
-      const [r, g, bl] = rampColor(t - a[i]);
-      const o = i * 4;
-      d[o] = r; d[o + 1] = g; d[o + 2] = bl; d[o + 3] = 255; // layer opacity = 0.75
+  function render() {
+    const { t, arrival } = state, base = grids[0];
+    let hit = 0, baseHit = 0;
+    for (let i = 0; i < nB; i++) {
+      const h = arrival[cells[i]] <= t ? 1 : 0;
+      hits[i] = h; hit += h;
+      if (base[cells[i]] <= t) baseHit++;
     }
-    ctx.putImageData(img, 0, 0);
-    fire.setUrl(canvas.toDataURL());
+    fire.draw(arrival, t);
+    dots.redraw();
+    $('stat-hit').textContent = hit.toLocaleString();
+    $('stat-saved').textContent = Math.max(0, baseHit - hit).toLocaleString();
+    $('time-label').textContent = fmtTime(t);
   }
 
-  function renderBuildings() {
-    let hit = 0;
-    for (const dot of dots) {
-      const a = state.arrival[dot.cell];
-      const isHit = a !== UNREACHED && a <= state.t;
-      if (isHit !== dot.hit) {
-        dot.hit = isHit;
-        dot.m.setStyle(isHit ? { fillColor: '#ff3b3b', fillOpacity: 0.9 }
-                             : { fillColor: '#ffffff', fillOpacity: 0.4 });
-      }
-      if (isHit) hit++;
-    }
-    document.getElementById('stat-hit').textContent = `${hit} / ${dots.length}`;
-  }
-
-  function setSolution(sol) {   // sol = entry of solutions.json, or null for baseline
-    state.sol = sol;
-    state.arrival = decodeGrid((sol || baseline).arrival_min_b64, rows, cols);
+  function setBudget(idx) {
+    const sol = idx > 0 ? solutions[idx - 1] || null : null;
+    state.arrival = sol ? gridFor(idx) : grids[0];
     if (breaksLayer) { map.removeLayer(breaksLayer); breaksLayer = null; }
     if (sol) {
       breaksLayer = L.geoJSON(sol.breaks, {
+        renderer: vecRenderer,
         style: { color: '#ffffff', weight: 1, fillColor: '#3ddc84', fillOpacity: 0.8 },
       }).addTo(map);
     }
-    document.getElementById('stat-spent').textContent =
-      sol ? `$${sol.cost.toLocaleString()}` : '$0';
-    document.getElementById('stat-saved').textContent =
-      sol ? String(sol.stats.houses_saved) : '0';
-    renderFire();
-    renderBuildings();
+    $('budget-label').textContent = sol ? `${fmtMoney(sol.budget)} budget` : '$0 — baseline';
+    $('stat-spent').textContent = sol ? fmtMoney(sol.cost) : '$0';
+    $('stat-spent').title = sol ? `$${sol.cost.toLocaleString()} spent of $${sol.budget.toLocaleString()}` : '';
+    chart.mark(sol ? sol.cost : 0, sol ? sol.stats.houses_saved : 0,
+      sol ? `${fmtMoney(sol.cost)} → ${sol.stats.houses_saved} saved` : '$0 — baseline');
+    render();
   }
 
-  // Controls (bare — DESIGN.md replaces all of this)
-  const sel = document.getElementById('budget');
-  sel.append(new Option('$0 (baseline)', ''));
-  solutions.forEach((s, i) => sel.append(new Option(`$${s.budget.toLocaleString()}`, String(i))));
-  sel.onchange = () => setSolution(sel.value === '' ? null : solutions[Number(sel.value)]);
+  const budgetEl = $('budget'), timeEl = $('time'), playEl = $('play');
+  budgetEl.max = String(meta.budgets.length);   // 0 = baseline, i = budgets[i-1]
+  $('budget-ticks').innerHTML =
+    ['$0', ...meta.budgets.map(fmtMoney)].map(s => `<span>${s}</span>`).join('');
+  budgetEl.oninput = () => setBudget(Number(budgetEl.value));
 
-  const time = document.getElementById('time');
-  const timeLabel = document.getElementById('time-label');
-  time.max = String(meta.horizon_min);
-  time.value = String(meta.horizon_min);
-  time.oninput = () => {
-    state.t = Number(time.value);
-    timeLabel.textContent = `${state.t} min`;
-    renderFire();
-    renderBuildings();
-  };
+  timeEl.max = String(meta.horizon_min);
+  timeEl.oninput = () => { state.t = Number(timeEl.value); render(); };
 
-  const playBtn = document.getElementById('play');
+  const TICK_MS = 20000 / (meta.horizon_min / 5);   // full sweep ≈ 20 s (DESIGN.md)
   let timer = null;
-  playBtn.onclick = () => {
-    if (timer) { clearInterval(timer); timer = null; playBtn.textContent = 'Play'; return; }
-    if (Number(time.value) >= meta.horizon_min) time.value = '0';
-    playBtn.textContent = 'Pause';
-    // 5-minute steps every 140 ms ≈ 20 s for a full 0→720 sweep (DESIGN.md)
+  function stopPlay() {
+    clearInterval(timer); timer = null;
+    playEl.innerHTML = '&#9654;&#xFE0E;'; playEl.setAttribute('aria-label', 'Play');
+  }
+  function startPlay() {
+    if (timer) return;
+    if (state.t >= meta.horizon_min) { state.t = 0; timeEl.value = '0'; render(); }
+    playEl.innerHTML = '&#10074;&#10074;'; playEl.setAttribute('aria-label', 'Pause');
     timer = setInterval(() => {
-      time.value = String(Math.min(Number(time.value) + 5, meta.horizon_min));
-      time.oninput();
-      if (Number(time.value) >= meta.horizon_min) {
-        clearInterval(timer); timer = null; playBtn.textContent = 'Play';
-      }
-    }, 140);
-  };
+      state.t = Math.min(state.t + 5, meta.horizon_min);
+      timeEl.value = String(state.t);
+      render();
+      if (state.t >= meta.horizon_min) stopPlay();
+    }, TICK_MS);
+  }
+  playEl.onclick = () => (timer ? stopPlay() : startPlay());
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !/^(BUTTON|INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) {
+      e.preventDefault(); playEl.click();
+    }
+  });
 
-  document.getElementById('story').textContent = meta.story;
-  document.getElementById('data-dir').textContent = `web/${DATA_DIR}/`;
-  timeLabel.textContent = `${state.t} min`;
-  setSolution(null);
+  setBudget(0);
+  startPlay();          // auto-run once so the demo lands immediately
 }
 
 main().catch(err => {
-  document.getElementById('story').textContent = `FAILED: ${err.message}`;
+  $('story').textContent = `FAILED to load web/${DATA_DIR}/ — ${err.message}`;
   console.error(err);
 });
