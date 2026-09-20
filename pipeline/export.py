@@ -104,6 +104,86 @@ def solution_entry(sim: Simulator, params: dict, base_stats: dict, mask, breaks_
     }
 
 
+def prefix_step_entry(sim: Simulator, base_stats: dict, step: int,
+                      break_ids: list[int], cum_cost: float, cum_saved,
+                      arr: np.ndarray, horizon: int,
+                      include_arrival: bool = True) -> dict:
+    s = sim.stats(arr)
+    bought = (round(s["minutes_to_town_center"] - base_stats["minutes_to_town"], 1)
+              if s["minutes_to_town_center"] is not None
+              and base_stats["minutes_to_town"] is not None else None)
+    entry = {
+        "step": step,
+        "break_ids": break_ids,
+        "cumulative_cost": round(cum_cost),
+        "cumulative_saved": cum_saved,
+        "minutes_to_first_home": s["minutes_to_first_home"],
+        "minutes_to_town": s["minutes_to_town_center"],
+        "minutes_bought": 0 if step == 0 else bought,
+    }
+    if include_arrival:
+        entry["arrival_b64"] = b64_grid_u8(arr, horizon)
+    return entry
+
+
+def build_prefix_plan(sim: Simulator, params: dict, base_stats: dict,
+                      base_arr: np.ndarray, accepted: list[dict],
+                      cand_cells: dict[int, tuple[np.ndarray, np.ndarray]],
+                      horizon: int, include_arrival: bool = True):
+    steps = [prefix_step_entry(
+        sim, base_stats, 0, [], 0.0, 0, base_arr, horizon, include_arrival
+    )]
+    break_features = []
+    prefix_masks = [(0.0, np.zeros(sim.fuel.shape, dtype=bool))]
+    mask = np.zeros(sim.fuel.shape, dtype=bool)
+    for step, item in enumerate(accepted, start=1):
+        rr, cc = cand_cells[item["id"]]
+        mask[rr, cc] = True
+        arr = sim.arrival(params, break_mask=mask)
+        steps.append(prefix_step_entry(
+            sim, base_stats, step, [item["id"]], item["cum_cost"],
+            item["cum_saved"], arr, horizon, include_arrival
+        ))
+        break_features.append(cells_to_geojson_feature(
+            sim, rr, cc,
+            {"id": item["id"], "step": step, "cells": item["cells"],
+             "cost": round(item["cost"]), "fuel_group": dominant_group(sim, rr, cc)}
+        ))
+        prefix_masks.append((float(item["cum_cost"]), mask.copy()))
+    return steps, {"type": "FeatureCollection", "features": break_features}, prefix_masks
+
+
+def score_prefixes(town: str, params: dict, scenarios: list[dict],
+                   prefix_masks: list[tuple[float, np.ndarray]]) -> list[dict]:
+    baseline_hits = np.asarray(
+        [scenario["baseline_homes_hit"] for scenario in scenarios], dtype=float
+    )
+    weights = np.asarray([scenario["weight"] for scenario in scenarios])
+    scored = []
+    with make_pool(town, params, scenarios) as pool:
+        for step, (cum_cost, prefix_mask) in enumerate(prefix_masks):
+            hit_pairs = pool.map(
+                scenario_hit,
+                [(scenario_id, prefix_mask)
+                 for scenario_id in range(len(scenarios))],
+            )
+            hits = np.zeros(len(scenarios), dtype=float)
+            for scenario_id, hit in hit_pairs:
+                hits[scenario_id] = hit
+            saved = baseline_hits - hits
+            scored.append(
+                {
+                    "step": step,
+                    "cum_cost": round(cum_cost),
+                    "mean_saved": round(float(np.dot(weights, saved)), 1),
+                    "min_saved": int(saved.min()),
+                    "max_saved": int(saved.max()),
+                    "per_scenario_saved": [int(value) for value in saved],
+                }
+            )
+    return scored
+
+
 def run(town: str) -> None:
     cfg = common.load_town(town)
     out = common.out_dir(town)
@@ -159,32 +239,9 @@ def run(town: str) -> None:
               f"bought {s['minutes_bought_town']} min (town)")
 
     # --- steps.json + breaks.geojson (continuous budget slider) -----------------
-    def step_entry(step, break_ids, cum_cost, cum_saved, arr):
-        s = sim.stats(arr)
-        bought = (round(s["minutes_to_town_center"] - base_stats["minutes_to_town"], 1)
-                  if s["minutes_to_town_center"] is not None
-                  and base_stats["minutes_to_town"] is not None else None)
-        return {"step": step, "break_ids": break_ids,
-                "cumulative_cost": round(cum_cost),
-                "cumulative_saved": cum_saved,
-                "minutes_to_first_home": s["minutes_to_first_home"],
-                "minutes_to_town": s["minutes_to_town_center"],
-                "minutes_bought": 0 if step == 0 else bought,
-                "arrival_b64": b64_grid_u8(arr, horizon)}
-
-    steps = [step_entry(0, [], 0.0, 0, base_arr)]
-    break_features = []
-    step_mask = np.zeros(sim.fuel.shape, dtype=bool)
-    for k, a in enumerate(accepted, start=1):
-        rr, cc = cand_cells[a["id"]]
-        step_mask[rr, cc] = True
-        arr = sim.arrival(params, break_mask=step_mask)
-        steps.append(step_entry(k, [a["id"]], a["cum_cost"], a["cum_saved"], arr))
-        break_features.append(cells_to_geojson_feature(
-            sim, rr, cc,
-            {"id": a["id"], "step": k, "cells": a["cells"],
-             "cost": round(a["cost"]), "fuel_group": dominant_group(sim, rr, cc)}))
-    breaks_geojson = {"type": "FeatureCollection", "features": break_features}
+    steps, breaks_geojson, _prefix_masks = build_prefix_plan(
+        sim, params, base_stats, base_arr, accepted, cand_cells, horizon
+    )
     print(f"  steps.json: {len(steps)} entries (step 0 = baseline + "
           f"{len(accepted)} greedy steps)")
 
@@ -193,49 +250,35 @@ def run(town: str) -> None:
         ensemble_path = out / "ensemble.json"
         ensemble_data = json.loads(ensemble_path.read_text(encoding="utf-8"))
         scenarios = ensemble_data["scenarios"]
-        robust_steps = []
-        robust_mask = np.zeros(sim.fuel.shape, dtype=bool)
-        prefix_masks = [(0.0, robust_mask.copy())]
-        for item in accepted:
-            rr, cc = cand_cells[item["id"]]
-            robust_mask[rr, cc] = True
-            prefix_masks.append((float(item["cum_cost"]), robust_mask.copy()))
-        with make_pool(town, params, scenarios) as pool:
-            for step, (cum_cost, prefix_mask) in enumerate(prefix_masks):
-                hit_pairs = pool.map(
-                    scenario_hit,
-                    [(scenario_id, prefix_mask)
-                     for scenario_id in range(len(scenarios))],
-                )
-                hits = np.zeros(len(scenarios), dtype=float)
-                for scenario_id, hit in hit_pairs:
-                    hits[scenario_id] = hit
-                baseline_hits = np.asarray(
-                    [s["baseline_homes_hit"] for s in scenarios], dtype=float
-                )
-                saved = baseline_hits - hits
-                robust_steps.append(
-                    {
-                        "step": step,
-                        "cum_cost": round(cum_cost),
-                        "mean_saved": round(
-                            float(np.dot(
-                                np.asarray([s["weight"] for s in scenarios]),
-                                saved,
-                            )),
-                            1,
-                        ),
-                        "min_saved": int(saved.min()),
-                        "max_saved": int(saved.max()),
-                        "per_scenario_saved": [int(v) for v in saved],
-                    }
-                )
+        robust_steps = score_prefixes(town, params, scenarios, _prefix_masks)
         robust_data = {
             "scenarios": scenarios,
             "steps": robust_steps,
         }
+        single_path = out / "solve_result_single.json"
+        if single_path.exists():
+            single = json.loads(single_path.read_text(encoding="utf-8"))
+            historical_steps, historical_breaks, historical_prefix_masks = (
+                build_prefix_plan(
+                    sim, params, base_stats, base_arr, single["accepted"],
+                    cand_cells, horizon, include_arrival=False
+                )
+            )
+            robust_data["historical_plan"] = {
+                "steps": score_prefixes(
+                    town, params, scenarios, historical_prefix_masks
+                )
+            }
+            plan_historical = {
+                "steps": historical_steps,
+                "breaks": historical_breaks,
+            }
+        else:
+            plan_historical = None
         print(f"  robust.json: {len(robust_steps)} prefix steps x "
               f"{len(scenarios)} scenarios")
+    else:
+        plan_historical = None
 
     # --- ring fallback (Zach: ship this if the solver's breaks are ugly) --------
     ring = ring_break_mask(sim)
@@ -309,6 +352,8 @@ def run(town: str) -> None:
         }
         if robust_data is not None:
             files["robust.json"] = robust_data
+        if plan_historical is not None:
+            files["plan_historical.json"] = plan_historical
         for name, obj in files.items():
             (web / name).write_text(json.dumps(obj, separators=(",", ":")),
                                     encoding="utf-8")
@@ -327,6 +372,9 @@ def run(town: str) -> None:
 
     sizes = {f.name: round(f.stat().st_size / 1e6, 3) for f in sorted(web.iterdir())}
     print(f"  web/data sizes (MB): {json.dumps(sizes)}")
+    for name in ("robust.json", "plan_historical.json"):
+        if name in sizes:
+            print(f"  {name}: {sizes[name]:.3f} MB")
     print(f"export OK: web/data = {total:.2f} MB <= {SIZE_CAP:.0f} MB, "
           f"{len(steps)} slider steps "
           f"({datetime.datetime.now(datetime.timezone.utc).date().isoformat()})")

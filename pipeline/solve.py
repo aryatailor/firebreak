@@ -172,7 +172,26 @@ def _preserve_single_result(out) -> None:
         result_path.replace(single_path)
 
 
+def _ensure_single_result(town: str, budget_cap: float | None) -> None:
+    out = common.out_dir(town)
+    single_path = out / "solve_result_single.json"
+    if single_path.exists():
+        return
+    result_path = out / "solve_result.json"
+    if not result_path.exists():
+        run(town, budget_cap, robust=False)
+    else:
+        try:
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            result = {}
+        if result.get("objective") == "ensemble":
+            run(town, budget_cap, robust=False)
+    _preserve_single_result(out)
+
+
 def run_robust(town: str, budget_cap: float | None = None) -> None:
+    _ensure_single_result(town, budget_cap)
     sim = Simulator(town)
     out = common.out_dir(town)
     _preserve_single_result(out)

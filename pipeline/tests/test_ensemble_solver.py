@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 import common
 import ensemble
+import export
 import restore_intermediates
 import robust
 import ros
@@ -60,6 +61,36 @@ def test_paradise_ensemble_is_deterministic():
     first.pop("generated")
     second.pop("generated")
     assert first == second
+
+
+def test_historical_plan_shape():
+    town = "paradise"
+    sim = Simulator(town)
+    out = ROOT / "pipeline" / "out" / town
+    params = _params(town)
+    solve = json.loads((out / "solve_result.json").read_text())
+    single = json.loads((out / "solve_result_single.json").read_text())
+    z = np.load(out / "candidates.npz")
+    cells = {
+        int(i): (z["flat_r"][start:start + length],
+                 z["flat_c"][start:start + length])
+        for i, (start, length) in enumerate(zip(z["starts"], z["lengths"]))
+    }
+    base_arr = sim.arrival(params)
+    stats = sim.stats(base_arr)
+    base_stats = {
+        "buildings_hit": stats["homes_hit"],
+        "minutes_to_town": stats["minutes_to_town_center"],
+    }
+    steps, breaks, _ = export.build_prefix_plan(
+        sim, params, base_stats, base_arr, single["accepted"][:2], cells,
+        720, include_arrival=False
+    )
+    assert all("arrival_b64" not in step for step in steps)
+    assert [feature["properties"]["id"] for feature in breaks["features"]] == [
+        item["id"] for item in single["accepted"][:2]
+    ]
+    assert solve["objective"] == "ensemble"
 
 
 def test_synthetic_upwind_break_has_positive_objective(tmp_path, monkeypatch):
