@@ -13,7 +13,7 @@
 
 <div id="brand">
   <svg class="brand-mark" viewBox="0 0 52 8" aria-hidden="true">
-    <path d="M0 4 H20 M32 4 H52"/>
+    <path d="M0 4 H22 M30 4 H52"/>
   </svg>
   <span class="brand-word">FIREBREAK</span>
 </div>
@@ -49,10 +49,6 @@
 </div>
 
 <aside id="panel">
-  <header>
-    <p id="story">loading…</p>
-  </header>
-
   <section class="control" id="budget-block">
     <div class="control-head"><label class="mono" for="budget">01 BUDGET</label></div>
     <input id="budget" type="range" min="0" max="5000000" step="10000" value="0">
@@ -72,34 +68,32 @@
     <p id="stat-line" class="mono">SPENT $0 &#183; +0 MIN EVACUATION</p>
   </section>
 
-  <details id="more">
-    <summary class="mono">More &#9656;</summary>
-
-    <section class="control" id="time-block">
-      <div class="control-head"><label class="mono" for="time">03 TIMELINE</label><span class="control-value mono" id="time-label">0h 00m</span></div>
-      <div class="time-row">
-        <button id="play" type="button" class="mono" aria-label="Play">&#9654;&#xFE0E;</button>
-        <input id="time" type="range" min="0" max="720" step="5" value="0">
-      </div>
-    </section>
-
-    <details id="explore">
-      <summary class="mono">04 BUDGET AND HOMES SAVED</summary>
-      <p id="curve-sentence" class="mono"></p>
-      <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative homes saved"></svg>
-    </details>
-
-    <details id="simplifications">
-      <summary class="mono">05 REAL VS SIMPLIFIED</summary>
-      <ul id="simp-list"></ul>
-    </details>
-
-    <footer>
-      <span id="basemap-status" class="mono">…</span>
+  <div id="panel-foot">
+    <span id="basemap-status" class="mono">…</span>
+    <span class="foot-btns">
       <button id="sound" type="button" class="mono">SOUND OFF</button>
-    </footer>
-  </details>
+      <button id="info-open" type="button" class="mono" aria-label="About the model">i</button>
+    </span>
+  </div>
 </aside>
+
+<div id="timeline" hidden>
+  <button id="play" type="button" class="mono" aria-label="Play">&#9654;&#xFE0E;</button>
+  <input id="time" type="range" min="0" max="720" step="5" value="0">
+  <span id="time-label" class="mono">0h 00m</span>
+</div>
+
+<div id="info-modal" hidden>
+  <div id="info-card">
+    <button id="info-close" type="button" class="mono" aria-label="Close">Close</button>
+    <h2 class="mono">BUDGET AND HOMES SAVED</h2>
+    <p id="curve-sentence" class="mono"></p>
+    <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative homes saved"></svg>
+    <h2 class="mono">REAL VS SIMPLIFIED</h2>
+    <ul id="simp-list"></ul>
+    <p id="story"></p>
+  </div>
+</div>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>
 </body>

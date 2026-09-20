@@ -56,6 +56,25 @@ deleted.
   the town centre instead would push part of the burn area off screen, and the
   viewer has to see the whole fire to read the story.
 
+## Tier 3: panel and map controls
+
+- Panel is now three blocks: **01 BUDGET**, **02 HOMES SAVED** (big number plus the
+  waffle), and a footer line. "More" is gone entirely.
+- The time scrubber moved out of the panel to a thin strip along the bottom edge of
+  the map: play button, track, elapsed time. It is dimmed but live outside free play.
+- The curve and the simplifications list moved behind one small **i** in the panel
+  footer, which opens a plain modal. Escape or a click outside closes it.
+- Region switching is the mono select at top left, under the brand. Selecting a town
+  reloads against that town's `data_dir`, which replays its own crawl.
+- Map: `minZoom 4`, `zoomSnap 0.25`, `wheelPxPerZoomLevel 45` and
+  `wheelDebounceTime 12` for a fast, smooth wheel. Zoom control moved to the top
+  right so it does not collide with the brand.
+- **US** button under the zoom control flies to the continental bounds. Below zoom 9
+  the fire, glow, ghost and ignition marker fade out and a pin appears for every town
+  in `towns/index.json`, labelled with name and event; clicking one loads it.
+  Pin centres come from each town's own `meta.bounds`, fetched once in the
+  background, since the index carries no coordinates.
+
 ### Home drift, measured
 
 Homes are pixels inside the fire's grid canvas, so their position is quantised to

@@ -175,13 +175,61 @@ input[type=range]::-moz-range-thumb {
 .ticks span:last-child::before { left: 100%; }
 #budget-readout { margin-top: 7px; font-size: 11px; color: var(--ink); letter-spacing: .01em; }
 
-.time-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+/* Timeline: a thin strip along the bottom edge of the map, not a panel control */
+#timeline {
+  position: absolute; left: 0; right: 340px; bottom: 0; z-index: 1100;
+  display: flex; align-items: center; gap: 10px; padding: 7px 14px 8px;
+  background: linear-gradient(to top, rgba(10, 11, 13, .82), rgba(10, 11, 13, 0));
+}
+#timeline[hidden] { display: none; }
+#timeline #time { flex: 1; margin: 0; }
+#time-label { font-size: 10px; color: var(--muted); min-width: 52px; text-align: right; }
 #play {
-  width: 32px; height: 26px; flex: 0 0 auto; font-size: 11px; line-height: 1;
-  background: none; color: var(--ink); border: 1px solid var(--line);
+  width: 28px; height: 22px; flex: 0 0 auto; font-size: 10px; line-height: 1;
+  background: rgba(10, 11, 13, .6); color: var(--ink); border: 1px solid var(--line);
   border-radius: 2px; cursor: pointer;
 }
 #play:hover { border-color: var(--muted); }
+
+/* Panel footer: status, sound, and the one "i" that holds everything else */
+#panel-foot {
+  margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-size: 9px; color: var(--muted); letter-spacing: .06em;
+}
+.foot-btns { display: flex; gap: 6px; flex: 0 0 auto; }
+#info-open {
+  width: 20px; height: 20px; padding: 0; cursor: pointer; border-radius: 2px;
+  background: none; border: 1px solid var(--line); color: var(--muted);
+  font-size: 10px; font-style: italic;
+}
+#info-open:hover { color: var(--ink); border-color: var(--muted); }
+
+/* Info modal: plain, flat, no card styling beyond a hairline */
+#info-modal {
+  position: fixed; inset: 0; z-index: 2200; background: rgba(5, 6, 8, .78);
+  display: flex; align-items: center; justify-content: center; padding: 32px;
+}
+#info-modal[hidden] { display: none; }
+#info-card {
+  position: relative; width: min(520px, 100%); max-height: 84vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 3px;
+  padding: 22px 24px 26px;
+}
+#info-card h2 {
+  margin: 0 0 10px; font-size: 11px; font-weight: 400; letter-spacing: .12em;
+  color: var(--muted);
+}
+#info-card h2 + * { margin-top: 0; }
+#info-card #curve { margin-bottom: 26px; }
+#info-card #story { margin: 18px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+#info-close {
+  position: absolute; right: 16px; top: 16px; cursor: pointer;
+  background: none; border: 1px solid var(--line); border-radius: 2px;
+  color: var(--muted); font-size: 9px; letter-spacing: .12em;
+  text-transform: uppercase; padding: 4px 8px;
+}
+#info-close:hover { color: var(--ink); border-color: var(--muted); }
 
 /* walkthrough dimming: controls not for the current state are dimmed, not hidden.
    Budget lights up only when picking (or done / free play); everything secondary
@@ -190,10 +238,7 @@ body:not([data-flow="pick"]):not([data-flow="done"]):not([data-flow="free"]) #bu
   opacity: .35; pointer-events: none;
 }
 body.intro #skip { display: none; }
-body:not([data-flow="free"]) #time-block,
-body:not([data-flow="free"]) #explore {
-  opacity: .35; pointer-events: none;
-}
+body:not([data-flow="free"]) #timeline { opacity: .55; }
 
 /* curve (inline SVG): 1 px line, dotted grid, no fill */
 #curve { width: 100%; height: auto; display: block; margin-top: 8px; }
@@ -204,22 +249,12 @@ body:not([data-flow="free"]) #explore {
 #curve .mark { stroke: rgba(232, 232, 230, .4); stroke-dasharray: 3 3; }
 #curve-dot { fill: var(--green); stroke: var(--panel); stroke-width: 2; }
 
-#explore, #simplifications { border-top: 1px solid var(--line); padding-top: 11px; }
-#explore summary, #simplifications summary {
-  cursor: pointer; color: var(--muted); font-size: 11px;
-  text-transform: uppercase; letter-spacing: .12em;
-}
-#curve-sentence { margin: 8px 0 0; font-size: 11.5px; color: var(--ink); }
+#curve-sentence { margin: 0 0 6px; font-size: 11.5px; color: var(--ink); }
 #simp-list {
-  margin: 8px 0 0; padding-left: 17px; font-size: 12px; color: var(--muted);
-  line-height: 1.5; max-height: 150px; overflow-y: auto;
+  margin: 0; padding-left: 17px; font-size: 12px; color: var(--muted);
+  line-height: 1.55;
 }
-
-footer {
-  margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line);
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  font-size: 9px; color: var(--muted); letter-spacing: .06em;
-}
+#simp-list li { margin-bottom: 7px; }
 #sound {
   background: none; border: 1px solid var(--line); border-radius: 2px;
   color: var(--muted); font-size: 9px; letter-spacing: .1em;
@@ -299,8 +334,8 @@ body.intro .leaflet-control-container, body.intro .ign { display: none; }
   position: absolute; left: 14px; top: 13px; z-index: 1250;
   display: flex; align-items: center; gap: 9px; pointer-events: none;
 }
-.brand-mark { width: 26px; height: 5px; overflow: visible; }
-.brand-mark path { stroke: var(--ink); stroke-width: 2; }
+.brand-mark { width: 34px; height: 5px; overflow: visible; }
+.brand-mark path { stroke: var(--ink); stroke-width: 2.4; }
 .brand-word {
   font-family: var(--sans); font-size: 11.5px; font-weight: 600;
   letter-spacing: .2em; color: var(--ink);
@@ -327,6 +362,32 @@ body.intro #brand { display: none; }
   font: 10px/14px var(--mono); letter-spacing: .04em; color: var(--ink);
   text-shadow: 0 0 4px rgba(0, 0, 0, .9);
 }
+
+/* Region pins: shown below zoom 9, one per town in the index */
+.region-pin { pointer-events: auto; cursor: pointer; }
+.region-dot {
+  position: absolute; left: -4px; top: -4px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--fire);
+  box-shadow: 0 0 0 3px rgba(255, 122, 26, .22);
+}
+.region-label {
+  position: absolute; left: 11px; top: -9px; white-space: nowrap;
+  font-family: var(--mono); color: var(--ink);
+  text-shadow: 0 0 5px rgba(0, 0, 0, .95);
+}
+.region-label b { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+.region-label i { display: block; font-size: 9px; font-style: normal; color: #b9bdc4; }
+body.wide-view .fire-canvas, body.wide-view .glow-canvas,
+body.wide-view .ghost-canvas, body.wide-view .ign { opacity: 0; }
+
+/* "US" button, stacked under the zoom control */
+.us-btn {
+  display: block; width: 30px; height: 30px; margin-top: 6px; cursor: pointer;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid rgba(0, 0, 0, .25); border-radius: 3px;
+  font-size: 10px; letter-spacing: .08em;
+}
+.us-btn:hover { background: #171b22; }
 
 /* dark-quiet Leaflet chrome */
 .leaflet-container { background: var(--bg); }

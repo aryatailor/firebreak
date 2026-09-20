@@ -12,6 +12,15 @@ const FORCE_OFFLINE = PARAMS.has('offline');
 const SKIP_INTRO = PARAMS.get('intro') === '0';
 const $ = id => document.getElementById(id);
 
+/* Switching region reloads the page against that town's data dir, which replays the
+   opening with its own crawl. A reload is the one way to be sure nothing is stale. */
+function goToTown(id) {
+  const p = new URLSearchParams(location.search);
+  p.set('town', id);
+  p.delete('data');
+  location.search = p.toString();
+}
+
 async function loadJSON(name) {
   const r = await fetch(`${DATA_DIR}/${name}`);
   if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
@@ -605,14 +614,17 @@ async function loadModel() {
 async function main() {
   // Town selector (CONTRACT.md web/towns/index.json): >1 entries → dropdown;
   // missing file or a single entry → none. Selecting reloads with ?town=<id>.
-  let towns = null;
+  let towns = [], entry = null;
   try {
     const tr = await fetch('towns/index.json');
-    if (tr.ok) towns = await tr.json();
-  } catch (e) { /* no manifest — default data dir */ }
-  if (Array.isArray(towns) && towns.length > 0) {
+    if (tr.ok) {
+      const j = await tr.json();
+      if (Array.isArray(j)) towns = j;
+    }
+  } catch (e) { /* no manifest, fall back to the default data dir */ }
+  if (towns.length) {
     const want = PARAMS.get('town');
-    const entry = towns.find(t => t.id === want) || towns[0];
+    entry = towns.find(t => t.id === want) || towns[0];
     if (!PARAMS.get('data')) DATA_DIR = entry.data_dir.replace(/\/+$/, '');
     if (towns.length > 1) {
       const sel = $('town-select');
@@ -620,11 +632,7 @@ async function main() {
       document.body.classList.add('has-towns');
       sel.innerHTML = towns.map(t =>
         `<option value="${t.id}"${t.id === entry.id ? ' selected' : ''}>${t.name} · ${t.event}</option>`).join('');
-      sel.onchange = () => {
-        const p = new URLSearchParams(location.search);
-        p.set('town', sel.value);
-        location.search = p.toString();
-      };
+      sel.onchange = () => goToTown(sel.value);
     }
   }
 
@@ -643,10 +651,64 @@ async function main() {
     `<span class="chip"><i style="background:${g.color}"></i>${g.group}</span>`).join('');
   $('simp-list').innerHTML = meta.simplifications.map(s => `<li>${s}</li>`).join('');
 
-  const map = L.map('map', { zoomSnap: 0.25, maxZoom: 17 });
+  const map = L.map('map', {
+    zoomSnap: 0.25, minZoom: 4, maxZoom: 17,
+    zoomControl: false,                 // rebuilt top right, clear of the brand
+    wheelPxPerZoomLevel: 45, wheelDebounceTime: 12,   // fast, smooth wheel zoom
+  });
+  L.control.zoom({ position: 'topright' }).addTo(map);
   map.fitBounds(bounds, { padding: [10, 10] });
   map.createPane('fire').style.zIndex = 405;
   window._fb = { map, bounds: b, rows, cols };   // debug/test handle
+
+  /* "US" flies out to the continental view, where every region shows as a marker. */
+  const US_BOUNDS = L.latLngBounds([24.5, -125.0], [49.4, -66.9]);
+  const UsControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const el = L.DomUtil.create('button', 'us-btn mono');
+      el.type = 'button';
+      el.textContent = 'US';
+      el.title = 'Zoom out to the United States';
+      L.DomEvent.disableClickPropagation(el);
+      L.DomEvent.on(el, 'click', () => map.flyToBounds(US_BOUNDS, { duration: 1.6 }));
+      return el;
+    },
+  });
+  map.addControl(new UsControl());
+
+  /* Below zoom 9 the region markers replace the fire: one per town in the index.
+     Centres come from each town's own meta.bounds, fetched once, in the background. */
+  const regionLayer = L.layerGroup();
+  (async () => {
+    for (const t of towns) {
+      let ll = null;
+      if (entry && t.id === entry.id) ll = bounds.getCenter();
+      else {
+        try {
+          const r = await fetch(`${t.data_dir.replace(/\/+$/, '')}/meta.json`);
+          if (!r.ok) continue;
+          const m = await r.json();
+          ll = L.latLng((m.bounds.north + m.bounds.south) / 2, (m.bounds.east + m.bounds.west) / 2);
+        } catch (e) { continue; }
+      }
+      L.marker(ll, {
+        icon: L.divIcon({
+          className: 'region-pin', iconSize: [0, 0],
+          html: `<span class="region-dot"></span><span class="region-label">` +
+                `<b>${t.name}</b>${t.event ? `<i>${t.event}</i>` : ''}</span>`,
+        }),
+      }).on('click', () => goToTown(t.id)).addTo(regionLayer);
+    }
+    syncRegionPins();
+  })();
+  function syncRegionPins() {
+    const show = map.getZoom() < 9 && regionLayer.getLayers().length > 0;
+    if (show && !map.hasLayer(regionLayer)) regionLayer.addTo(map);
+    if (!show && map.hasLayer(regionLayer)) map.removeLayer(regionLayer);
+    document.body.classList.toggle('wide-view', map.getZoom() < 9);
+  }
+  map.on('zoomend', syncRegionPins);
 
   const windDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(meta.wind.from_deg / 45) % 8];
   const statusBits = mode => [
@@ -848,6 +910,15 @@ async function main() {
     }
   });
 
+  // The one "i": everything that is not budget or homes saved lives behind it.
+  const infoModal = $('info-modal');
+  const openInfo = () => { infoModal.hidden = false; };
+  const closeInfo = () => { infoModal.hidden = true; };
+  $('info-open').onclick = openInfo;
+  $('info-close').onclick = closeInfo;
+  infoModal.onclick = e => { if (e.target === infoModal) closeInfo(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeInfo(); });
+
   // Sound toggle — never throws; first click may lazily create the context.
   const soundEl = $('sound');
   const soundLabel = () =>
@@ -895,6 +966,7 @@ async function main() {
     pointAtBudget(f === 'pick');
     skipEl.hidden = f === 'free';
     skipEl.textContent = f === 'crawl' ? 'Skip intro' : 'Free play';
+    $('timeline').hidden = f === 'crawl';
     if (f === 'burn0') {
       setCaption('This is what happened.', null);
       crawlTimers.push(setTimeout(() => {
