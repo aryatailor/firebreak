@@ -1,6 +1,13 @@
 {
   "name": "Altadena, CA",
   "story": "Altadena, California. 6:18 PM, January 7, 2025. The Eaton Fire started here.",
+  "crawl": [
+    "January 7, 2025. 6:18 PM.",
+    "A fire starts at the mouth of Eaton Canyon.",
+    "Santa Ana winds. 60 miles per hour.",
+    "Altadena is directly downwind. 15,000 homes.",
+    "No fuel breaks stand between the fire and the town."
+  ],
   "bounds": {"west": -118.22, "south": 34.16, "east": -118.02, "north": 34.27},
   "ignition": {"lat": 34.19, "lon": -118.09, "label": "Eaton Canyon · 6:18 PM"},
   "wind": {"speed_mph": 45, "from_deg": 60},

@@ -258,13 +258,105 @@ The town selector. An array, one entry per available town, in display order:
 
 ```jsonc
 [ {"id":"paradise","name":"Paradise, CA","event":"Camp Fire · Nov 8, 2018",
-   "data_dir":"data/"} ]
+   "data_dir":"data/","story":true} ]
 ```
 
 `data_dir` is relative to `web/` and contains the full file set described in this
 document (Paradise lives at the legacy `data/`; later towns at
 `towns/<id>/`). The pipeline appends an entry when a new town exports
 successfully.
+
+`story` is `true` for the two curated towns, which ship a precomputed solver run
+(solutions.json, steps.json, curve.json, breaks.geojson) and crawl text. It is
+`false` for free-play regions, which ship only meta/physics/baseline/buildings/
+basemap — **the page must not expect solver files when `story` is false.**
+
+## meta.crawl — the cinematic opening
+
+`meta.json` carries a `crawl` array: 4 to 6 short lines, shown one at a time
+before the fire starts. Plain sentences, no em dashes, no markup.
+
+```jsonc
+"crawl": ["November 8, 2018. 6:15 AM.",
+          "A transmission line fails above the Feather River canyon.", ...]
+```
+
+Absent or empty means no crawl; free-play regions get a two-line generated one.
+The crawl is narrative framing for the historical event and is **not** derived
+from the model's parameters, so its wind figure may be the reported real-world
+gust while `meta.wind` is the steady wind the simulation was calibrated with.
+
+## The local API (serve.py)
+
+`python serve.py` (or `.\demo.ps1`) serves `web/` on **http://localhost:8000** and
+adds the endpoints below. The page still works as plain static files without it;
+the API only adds free play. All bodies are JSON.
+
+### GET /api/health
+
+```jsonc
+{"ok":true, "towns":[{"id":"paradise","name":"Paradise, CA","story":true}, ...],
+ "landfire_reachable":true, "version":"1"}
+```
+
+`landfire_reachable` is a 5-second probe of the LFPS product endpoint; it is
+`false` when offline, which means `/api/region` will fail — everything already
+exported still works.
+
+### POST /api/region → build a new free-play region
+
+Request: `{"lat":38.45, "lon":-122.71, "name":"Santa Rosa, CA"}` (`name` optional).
+Response (immediate, the build runs in the background):
+
+```jsonc
+{"id":"santa-rosa-ca", "data_dir":"towns/santa-rosa-ca/", "status":"building",
+ "cached":false}
+```
+
+- Box is `lat ± 0.1°`, `lon ± 0.13°` around the point; 60 m cells.
+- Newest LANDFIRE fuel layer + elevation, homes proxied 1 per developed cell
+  (capped 20,000), default wind **30 mph from 45°**, ignition placed on the
+  upwind edge, **no solver**.
+- `cached:true` with `status:"ready"` comes back instantly if that point was
+  built before (ids are derived from the rounded coordinates).
+- Target under 3 minutes; a failure surfaces on the status endpoint, never as a
+  hang.
+
+### GET /api/region/{id}/status → progress
+
+Poll this while `status` is `building` (about once a second):
+
+```jsonc
+{"id":"santa-rosa-ca", "status":"building", "stage":"Building grid",
+ "pct":45, "message":"Reprojecting fuels and terrain", "data_dir":"towns/santa-rosa-ca/"}
+```
+
+`status` is one of `building`, `ready`, `error`. On `ready`, `data_dir` holds
+meta/physics/baseline/buildings/basemap/fuel_legend (**no** solver files, and the
+index entry has `story:false`). On `error` there is an `error` string with the
+real reason.
+
+### POST /api/simulate → run the Python model
+
+A fallback so the page works before its own JS sim is finished, and a way to
+check the JS against the source of truth.
+
+Request:
+
+```jsonc
+{"town":"paradise", "ignition_rc":[122,377],
+ "wind":{"speed_mph":35,"from_deg":45}, "breaks":[[r,c], ...]}
+```
+
+`ignition_rc`, `wind` and `breaks` are all optional; omitted means the town's
+own values (and no breaks). Response:
+
+```jsonc
+{"arrival_b64":"<uint8 buckets, 255 = never within horizon>", "bucket_min":5,
+ "horizon_min":720, "rows":334, "cols":456,
+ "stats":{"homes_total":11000,"homes_hit":7765,"minutes_to_town":745.1,
+          "minutes_to_first_home":59.3,"sim_seconds":0.12}}
+```
 
 ## File inventory
 

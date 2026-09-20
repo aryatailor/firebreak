@@ -1,6 +1,13 @@
 {
   "name": "Paradise, CA",
   "story": "What if Paradise had cut fuel breaks before November 8, 2018?",
+  "crawl": [
+    "November 8, 2018. 6:15 AM.",
+    "A transmission line fails above the Feather River canyon.",
+    "Winds are 50 miles per hour, out of the northeast.",
+    "Paradise is 17 kilometers downwind. 26,000 people. 11,000 homes.",
+    "No fuel breaks stand between the fire and the town."
+  ],
   "bounds": {"west": -121.70, "south": 39.68, "east": -121.38, "north": 39.86},
   "ignition": {"lat": 39.794, "lon": -121.435, "label": "Pulga (Camp Fire origin)"},
   "wind": {"speed_mph": 35, "from_deg": 45},

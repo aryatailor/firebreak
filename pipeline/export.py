@@ -211,6 +211,7 @@ def run(town: str) -> None:
     ign_r, ign_c = config["ignition_cell"]
     meta = {
         "town": cfg["name"], "story": cfg["story"],
+        "crawl": cfg.get("crawl", []),
         "bounds": {k: round(v, 6) for k, v in gm["bounds"].items()},
         "grid": {"rows": gm["rows"], "cols": gm["cols"], "cell_m": gm["cell_m"]},
         "wind": cfg["wind"],

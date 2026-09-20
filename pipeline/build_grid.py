@@ -129,7 +129,10 @@ def build_proxy_buildings(geom: dict, fuel: np.ndarray, cfg: dict) -> tuple[dict
     n_urban = int(rr.size)
     if n_urban == 0:
         sys.exit("no urban (NB91) cells - nothing to protect; check the town bbox")
-    target = int(cfg.get("homes_estimate") or n_urban)
+    # A curated town states its pre-fire home count; a free-play region has no
+    # such number, so it gets one home per developed cell, capped.
+    target = int(cfg.get("homes_estimate")
+                 or min(n_urban, int(cfg.get("homes_cap", 20000))))
     rng = np.random.default_rng(0)
     counts = np.full(n_urban, target // n_urban, dtype=np.int32)
     counts[rng.permutation(n_urban)[: target - int(counts.sum())]] += 1

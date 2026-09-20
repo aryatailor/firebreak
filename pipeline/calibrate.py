@@ -71,7 +71,10 @@ def ring_break_mask(sim: Simulator) -> np.ndarray:
     return ring
 
 
-def run(town: str) -> None:
+def run(town: str, gate: bool = True) -> None:
+    """gate=False is for free-play regions: they have no precomputed solver, the
+    user places their own breaks, so 'do breaks move the needle' is not a release
+    gate. The sweep and the parameter choice are identical either way."""
     sim = Simulator(town)
     print(f"calibrate: {town}, ignition cell {sim.ignition}, "
           f"town center cell {sim.town_center}")
@@ -101,12 +104,27 @@ def run(town: str) -> None:
                       f"{mtt if mtt is not None else 'never':>9} "
                       f"{row['frac_homes_hit']:>10.1%} {row['sim_seconds']:>6.3f}")
 
-    in_band = [r for r in table
-               if HIT_MIN <= r["frac_homes_hit"] <= HIT_MAX
-               and r["minutes_to_first_home"] is not None]
+    reachable = [r for r in table if r["minutes_to_first_home"] is not None]
+    in_band = [r for r in reachable
+               if HIT_MIN <= r["frac_homes_hit"] <= HIT_MAX]
     if not in_band:
-        sys.exit(f"no sweep combo lands in the {HIT_MIN:.0%}-{HIT_MAX:.0%} homes-hit "
-                 f"band - the model needs rethinking, STOP (plan section 5)")
+        if gate:
+            sys.exit(f"no sweep combo lands in the {HIT_MIN:.0%}-{HIT_MAX:.0%} "
+                     f"homes-hit band - the model needs rethinking, STOP "
+                     f"(plan section 5)")
+        if not reachable:
+            sys.exit("fire never reaches a single home under any swept parameter "
+                     "- the ignition point or the box is wrong")
+        # free play: no combo in band is a landscape fact (a town ringed by
+        # non-burnable ground, say), not a release blocker - take the closest.
+        in_band = sorted(reachable,
+                         key=lambda r: abs(r["frac_homes_hit"] - 0.75))[:1]
+        common.log_event("calibrate", town,
+                         f"no combo in the {HIT_MIN:.0%}-{HIT_MAX:.0%} band; "
+                         f"free-play region takes closest "
+                         f"({in_band[0]['frac_homes_hit']:.1%} hit)")
+        print(f"  no combo in band - free play takes closest "
+              f"({in_band[0]['frac_homes_hit']:.1%} homes hit)")
 
     # prefer hit fraction near 75%, mildly prefer an earlier first-home time
     # (drama); the gate has the final say
