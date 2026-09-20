@@ -1,0 +1,267 @@
+{
+  "town": "santarosa",
+  "params": {
+    "scale": 45.0,
+    "k_w": 0.25,
+    "structure_rate": 0.08,
+    "break_mult": 0.05
+  },
+  "target": {
+    "frac_homes_hit": [
+      0.6,
+      0.9
+    ]
+  },
+  "calibration_table": [
+    {
+      "scale": 30.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 69.5,
+      "minutes_to_town": 737.1,
+      "frac_homes_hit": 0.2931,
+      "sim_seconds": 0.046
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 74.0,
+      "minutes_to_town": 783.8,
+      "frac_homes_hit": 0.2177,
+      "sim_seconds": 0.05
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 77.1,
+      "minutes_to_town": 542.7,
+      "frac_homes_hit": 0.8195,
+      "sim_seconds": 0.05
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 80.4,
+      "minutes_to_town": 577.7,
+      "frac_homes_hit": 0.587,
+      "sim_seconds": 0.051
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 87.2,
+      "minutes_to_town": 410.9,
+      "frac_homes_hit": 0.9834,
+      "sim_seconds": 0.054
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 89.6,
+      "minutes_to_town": 431.3,
+      "frac_homes_hit": 0.9552,
+      "sim_seconds": 0.052
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 46.3,
+      "minutes_to_town": 491.4,
+      "frac_homes_hit": 0.9432,
+      "sim_seconds": 0.053
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 49.3,
+      "minutes_to_town": 522.5,
+      "frac_homes_hit": 0.7314,
+      "sim_seconds": 0.049
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 51.4,
+      "minutes_to_town": 361.8,
+      "frac_homes_hit": 0.9954,
+      "sim_seconds": 0.05
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 53.6,
+      "minutes_to_town": 385.1,
+      "frac_homes_hit": 0.9924,
+      "sim_seconds": 0.05
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 58.2,
+      "minutes_to_town": 273.9,
+      "frac_homes_hit": 0.9952,
+      "sim_seconds": 0.051
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 59.7,
+      "minutes_to_town": 287.5,
+      "frac_homes_hit": 0.9948,
+      "sim_seconds": 0.052
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 34.8,
+      "minutes_to_town": 368.5,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.049
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 37.0,
+      "minutes_to_town": 391.9,
+      "frac_homes_hit": 0.9813,
+      "sim_seconds": 0.049
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 38.6,
+      "minutes_to_town": 271.4,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.05
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 40.2,
+      "minutes_to_town": 288.9,
+      "frac_homes_hit": 0.9955,
+      "sim_seconds": 0.05
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 43.6,
+      "minutes_to_town": 205.4,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.051
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 44.8,
+      "minutes_to_town": 215.6,
+      "frac_homes_hit": 0.9952,
+      "sim_seconds": 0.054
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 23.2,
+      "minutes_to_town": 245.7,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.053
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 24.7,
+      "minutes_to_town": 261.3,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.053
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 25.7,
+      "minutes_to_town": 180.9,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.054
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 26.8,
+      "minutes_to_town": 192.6,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.054
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 29.1,
+      "minutes_to_town": 137.0,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.057
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 29.9,
+      "minutes_to_town": 143.8,
+      "frac_homes_hit": 0.9958,
+      "sim_seconds": 0.057
+    }
+  ],
+  "gate": {
+    "ring_cells": 7406,
+    "required_drop": 0.3,
+    "attempts": [
+      {
+        "scale": 45.0,
+        "k_w": 0.25,
+        "structure_rate": 0.08,
+        "break_mult": 0.05,
+        "homes_hit": 21942,
+        "ringed_homes_hit": 9515,
+        "drop_frac": 0.5664
+      }
+    ],
+    "passed": true,
+    "chosen": {
+      "scale": 45.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "break_mult": 0.05,
+      "homes_hit": 21942,
+      "ringed_homes_hit": 9515,
+      "drop_frac": 0.5664
+    }
+  },
+  "ignition_cell": [
+    39,
+    255
+  ],
+  "town_center_cell": [
+    274,
+    87
+  ],
+  "generated": "2026-09-20T07:50:42"
+}

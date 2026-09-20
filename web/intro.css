@@ -1,0 +1,79 @@
+/* intro.css — the cinematic opening, grafted on top of the app without touching it.
+   Vendored Selawik (Microsoft, SIL OFL 1.1), loaded locally so it works offline. */
+@font-face {
+  font-family: Selawik; src: url(vendor/fonts/selawik-400.woff2) format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: Selawik; src: url(vendor/fonts/selawik-600.woff2) format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: Selawik; src: url(vendor/fonts/selawik-700.woff2) format("woff2");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+#fb-intro {
+  position: fixed; inset: 0; z-index: 4000; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  background: #000; opacity: 1; transition: opacity .6s ease;
+}
+#fb-intro.gone { opacity: 0; pointer-events: none; }
+#fb-heat-defs { position: absolute; width: 0; height: 0; }
+#fb-intro-inner { display: flex; flex-direction: column; align-items: center; }
+
+/* the word twice: a red copy behind, waved by turbulence; the white copy is clean */
+#fb-title-wrap { position: relative; display: inline-block; }
+#fb-title-back, #fb-title-front {
+  margin: 0; font-family: Selawik, "Segoe UI", system-ui, sans-serif; font-weight: 700;
+  font-size: clamp(64px, 12vw, 172px); letter-spacing: .16em; text-indent: .16em;
+  line-height: 1.05; white-space: nowrap;
+}
+#fb-title-back {
+  position: absolute; inset: 0; color: #ff2a1a;
+  -webkit-text-stroke: 7px #ff2a1a;
+  filter: blur(12px) url(#fb-heat); will-change: filter;
+}
+#fb-title-front { position: relative; color: #fff; }
+#fb-enter {
+  margin-top: 44px; padding: 12px 26px; cursor: pointer;
+  background: none; color: #fff;
+  border: 1px solid rgba(255, 255, 255, .55); border-radius: 2px;
+  font: 12px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .16em; text-transform: uppercase;
+}
+#fb-enter:hover { border-color: #fff; background: rgba(255, 255, 255, .06); }
+
+/* the crawl, over the map, one line at a time */
+#fb-crawl {
+  position: fixed; inset: 0; z-index: 3900; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  background: #000; transition: background-color 2s ease;
+}
+#fb-crawl[hidden] { display: none; }
+#fb-crawl.clear { background: rgba(0, 0, 0, .28); }
+#fb-crawl-line {
+  margin: 0; max-width: 62ch; padding: 0 32px;
+  font-family: Selawik, "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(22px, 2.6vw, 40px); line-height: 1.45; color: #fff;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, .9);
+  opacity: 0; transition: opacity .7s ease;
+}
+#fb-crawl-line.on { opacity: 1; }
+
+#fb-skip {
+  position: fixed; right: 16px; bottom: 16px; z-index: 3950; cursor: pointer;
+  background: rgba(10, 10, 10, .7); border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 4px; color: #8f8f8f; padding: 7px 12px;
+  font: 500 11px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+#fb-skip:hover { color: #fff; }
+#fb-skip[hidden] { display: none; }
+
+/* while the opening runs, the app underneath is live but out of sight */
+body.fb-crawl #panel, body.fb-crawl #caption, body.fb-crawl #legend,
+body.fb-crawl #town-select, body.fb-crawl .leaflet-control-container,
+body.fb-crawl #point-arrow, body.fb-crawl #break-tip { display: none !important; }
+body.fb-crawl #map { inset: 0 !important; }
+body.fb-intro #intro { display: none !important; }   /* his title card stays unused */

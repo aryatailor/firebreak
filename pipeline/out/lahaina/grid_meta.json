@@ -1,0 +1,55 @@
+{
+  "town": "lahaina",
+  "name": "Lahaina, HI",
+  "rows": 186,
+  "cols": 208,
+  "cell_m": 60.0,
+  "cell_merc": 64.21721224030931,
+  "bounds": {
+    "west": -156.72,
+    "north": 20.93,
+    "east": -156.60001040922128,
+    "south": 20.829747946685643
+  },
+  "bounds_3857": {
+    "west_m": -17445990.597121835,
+    "north_m": 2383533.790412539,
+    "east_m": -17432633.416975852,
+    "south_m": 2371589.3889358416
+  },
+  "fuel": {
+    "product": "LANDFIRE LF2022_FBFM40 (pre-fire vintage)",
+    "check": {
+      "woody_frac": 0.05,
+      "grass_barren_frac": 0.4391,
+      "corridor_cells": 10906,
+      "looks_prefire": false,
+      "note": "absolute check - no LF2014 layer on the live LFPS to compare"
+    }
+  },
+  "terrain": "LANDFIRE LF2020_Elev",
+  "buildings": {
+    "source": "proxy: developed-land cells scaled to pre-fire home count",
+    "count": 4500,
+    "proxy": true,
+    "urban_cells": 1850,
+    "simplification": "Homes are estimated from developed-land cells at pre-fire density (Lahaina CDP, ~12,700 people / ~3 per household), not individual footprints."
+  },
+  "fuel_group_cells": {
+    "grass": 11646,
+    "grass_shrub": 534,
+    "shrub": 1720,
+    "timber_understory": 6990,
+    "timber_litter": 18,
+    "slash": 0,
+    "urban": 1850,
+    "snow": 0,
+    "agriculture": 1076,
+    "water": 13955,
+    "barren": 899
+  },
+  "unknown_fuel_frac": 0.0017,
+  "elev_nodata_frac": 0.0017,
+  "fetched": "2026-09-20",
+  "generated": "2026-09-20T07:50:51"
+}

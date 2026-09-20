@@ -1,0 +1,353 @@
+{
+  "town": "superior",
+  "params": null,
+  "target": {
+    "frac_homes_hit": [
+      0.6,
+      0.9
+    ]
+  },
+  "calibration_table": [
+    {
+      "scale": 30.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 83.0,
+      "frac_homes_hit": 0.8904,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 101.6,
+      "frac_homes_hit": 0.8484,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 46.6,
+      "frac_homes_hit": 0.8451,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 57.6,
+      "frac_homes_hit": 0.8195,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 26.1,
+      "frac_homes_hit": 0.8172,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 32.9,
+      "frac_homes_hit": 0.8004,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 55.3,
+      "frac_homes_hit": 0.9947,
+      "sim_seconds": 0.015
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 67.7,
+      "frac_homes_hit": 0.9596,
+      "sim_seconds": 0.015
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 31.1,
+      "frac_homes_hit": 0.9639,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 38.4,
+      "frac_homes_hit": 0.9236,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 17.4,
+      "frac_homes_hit": 0.8899,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 21.9,
+      "frac_homes_hit": 0.8568,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 41.5,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.015
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 50.8,
+      "frac_homes_hit": 0.9992,
+      "sim_seconds": 0.015
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 23.3,
+      "frac_homes_hit": 0.9998,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 28.8,
+      "frac_homes_hit": 0.9926,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 13.1,
+      "frac_homes_hit": 0.9827,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 16.4,
+      "frac_homes_hit": 0.967,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 27.7,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.015
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 33.9,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.015
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 15.5,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 19.2,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 8.7,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.016
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 0.0,
+      "minutes_to_town": 11.0,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.016
+    }
+  ],
+  "gate": {
+    "ring_cells": 1539,
+    "required_drop": 0.3,
+    "attempts": [
+      {
+        "scale": 30.0,
+        "k_w": 0.45,
+        "structure_rate": 0.08,
+        "break_mult": 0.05,
+        "homes_hit": 11206,
+        "ringed_homes_hit": 11163,
+        "drop_frac": 0.0038
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.45,
+        "structure_rate": 0.08,
+        "break_mult": 0.02,
+        "homes_hit": 11206,
+        "ringed_homes_hit": 11160,
+        "drop_frac": 0.0041
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.45,
+        "structure_rate": 0.08,
+        "break_mult": 0.01,
+        "homes_hit": 11206,
+        "ringed_homes_hit": 11160,
+        "drop_frac": 0.0041
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.45,
+        "structure_rate": 0.15,
+        "break_mult": 0.05,
+        "homes_hit": 11441,
+        "ringed_homes_hit": 11379,
+        "drop_frac": 0.0054
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.45,
+        "structure_rate": 0.15,
+        "break_mult": 0.02,
+        "homes_hit": 11441,
+        "ringed_homes_hit": 11378,
+        "drop_frac": 0.0055
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.45,
+        "structure_rate": 0.15,
+        "break_mult": 0.01,
+        "homes_hit": 11441,
+        "ringed_homes_hit": 11378,
+        "drop_frac": 0.0055
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.35,
+        "structure_rate": 0.08,
+        "break_mult": 0.05,
+        "homes_hit": 11473,
+        "ringed_homes_hit": 11446,
+        "drop_frac": 0.0024
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.35,
+        "structure_rate": 0.08,
+        "break_mult": 0.02,
+        "homes_hit": 11473,
+        "ringed_homes_hit": 11446,
+        "drop_frac": 0.0024
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.35,
+        "structure_rate": 0.08,
+        "break_mult": 0.01,
+        "homes_hit": 11473,
+        "ringed_homes_hit": 11446,
+        "drop_frac": 0.0024
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.35,
+        "structure_rate": 0.15,
+        "break_mult": 0.05,
+        "homes_hit": 11831,
+        "ringed_homes_hit": 11787,
+        "drop_frac": 0.0037
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.35,
+        "structure_rate": 0.15,
+        "break_mult": 0.02,
+        "homes_hit": 11831,
+        "ringed_homes_hit": 11787,
+        "drop_frac": 0.0037
+      },
+      {
+        "scale": 30.0,
+        "k_w": 0.35,
+        "structure_rate": 0.15,
+        "break_mult": 0.01,
+        "homes_hit": 11831,
+        "ringed_homes_hit": 11787,
+        "drop_frac": 0.0037
+      }
+    ],
+    "passed": false,
+    "chosen": null
+  },
+  "ignition_cell": [
+    102,
+    56
+  ],
+  "town_center_cell": [
+    105,
+    145
+  ],
+  "generated": "2026-09-20T07:50:33"
+}

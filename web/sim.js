@@ -1,223 +1,180 @@
-/* sim.js — the fire model in the browser, per CONTRACT.md "The algorithm, exactly".
-   Runs in a Web Worker so the UI never freezes. Dijkstra over a directed 8-neighbour
-   graph, binary heap, edge weights computed on the fly, arrival in 5-minute buckets.
+/* Firebreak — browser fire simulation. Reimplements CONTRACT.md "The algorithm,
+   exactly" from physics.json: Dijkstra over a directed 8-neighbour grid graph,
+   edge weight = dist / (min(base_i, base_j) * f_slope * f_wind * scale).
+   Plain script (no modules) so it runs from file:// and python -m http.server;
+   also loadable from Node for the parity check (see tools/parity.mjs). */
+(function (root) {
+  'use strict';
 
-   Messages in:  {type:'load', dataDir}
-                 {type:'run', id, ignition_rc, wind, breaks}      breaks = cell indices
-   Messages out: {type:'ready', rows, cols, ...} | {type:'result', ...} | {type:'error'} */
+  const NEIGH = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
 
-let P = null;                 // parsed physics.json
-let fuel = null, elev = null; // Uint8Array, Int16Array
-let base0 = null;             // Float32Array, base rate per cell before breaks
-let rows = 0, cols = 0, n = 0;
-
-const DR = [-1, -1, -1, 0, 0, 1, 1, 1];
-const DC = [-1, 0, 1, -1, 1, -1, 0, 1];
-
-function b64ToBytes(b64) {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/* Wind factor depends only on travel direction, so it is 8 constants:
-   bearing = atan2(dc, -dr); f = exp(k_w * (mph/10) * cos(bearing - downwind)). */
-function windFactors(wind) {
-  const downwind = ((wind.from_deg + 180) % 360) * Math.PI / 180;
-  const k = P.k_w * (wind.speed_mph / 10);
-  const f = new Float64Array(8);
-  for (let d = 0; d < 8; d++) {
-    const bearing = Math.atan2(DC[d], -DR[d]);
-    f[d] = Math.exp(k * Math.cos(bearing - downwind));
-  }
-  return f;
-}
-
-function run(ignition_rc, wind, breaks) {
-  const t0 = Date.now();
-  const cell_m = P.grid.cell_m;
-  const scale = P.scale_m_per_min;
-  const horizon = P.horizon_min;
-  const bucket = P.bucket_min;
-
-  // base rates, with any cleared cells scaled by break_mult (both directions,
-  // because every edge uses min(base_i, base_j))
-  const base = base0.slice();
-  if (breaks && breaks.length) {
-    const bm = P.break_mult;
-    for (let i = 0; i < breaks.length; i++) base[breaks[i]] *= bm;
+  function b64ToBytes(b64) {
+    if (typeof atob === 'function') {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+    return new Uint8Array(Buffer.from(b64, 'base64'));
   }
 
-  const wf = windFactors(wind || P.wind);
-  const distOf = new Float64Array(8);
-  for (let d = 0; d < 8; d++) distOf[d] = cell_m * Math.hypot(DR[d], DC[d]);
-
-  const INF = Infinity;
-  const dist = new Float64Array(n).fill(INF);
-  const done = new Uint8Array(n);
-
-  // binary min-heap with lazy deletion
-  let cap = 1 << 16;
-  let hk = new Float64Array(cap);   // keys
-  let hv = new Int32Array(cap);     // cell ids
-  let hn = 0;
-  const push = (key, val) => {
-    if (hn === cap) {
-      cap <<= 1;
-      const nk = new Float64Array(cap); nk.set(hk); hk = nk;
-      const nv = new Int32Array(cap); nv.set(hv); hv = nv;
+  /* Binary min-heap keyed on a Float64Array of distances (decrease-key by
+     lazy re-insertion; stale entries are skipped on pop). */
+  class Heap {
+    constructor(cap) {
+      this.keys = new Float64Array(cap);
+      this.vals = new Int32Array(cap);
+      this.n = 0;
     }
-    let i = hn++;
-    hk[i] = key; hv[i] = val;
-    while (i > 0) {
-      const p = (i - 1) >> 1;
-      if (hk[p] <= hk[i]) break;
-      const tk = hk[p]; hk[p] = hk[i]; hk[i] = tk;
-      const tv = hv[p]; hv[p] = hv[i]; hv[i] = tv;
-      i = p;
-    }
-  };
-  const pop = () => {
-    const top = hv[0];
-    hn--;
-    if (hn > 0) {
-      hk[0] = hk[hn]; hv[0] = hv[hn];
-      let i = 0;
-      for (;;) {
-        const l = 2 * i + 1, r = l + 1;
-        let s = i;
-        if (l < hn && hk[l] < hk[s]) s = l;
-        if (r < hn && hk[r] < hk[s]) s = r;
-        if (s === i) break;
-        const tk = hk[s]; hk[s] = hk[i]; hk[i] = tk;
-        const tv = hv[s]; hv[s] = hv[i]; hv[i] = tv;
-        i = s;
+    push(k, v) {
+      if (this.n === this.keys.length) {
+        const nk = new Float64Array(this.n * 2), nv = new Int32Array(this.n * 2);
+        nk.set(this.keys); nv.set(this.vals);
+        this.keys = nk; this.vals = nv;
       }
+      let i = this.n++;
+      const keys = this.keys, vals = this.vals;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (keys[p] <= k) break;
+        keys[i] = keys[p]; vals[i] = vals[p];
+        i = p;
+      }
+      keys[i] = k; vals[i] = v;
     }
-    return top;
-  };
-
-  const src = ignition_rc[0] * cols + ignition_rc[1];
-  dist[src] = 0;
-  push(0, src);
-
-  while (hn > 0) {
-    const u = pop();
-    if (done[u]) continue;
-    done[u] = 1;
-    const du = dist[u];
-    if (du > horizon) break;             // nothing beyond the horizon matters
-    const bu = base[u];
-    if (bu <= 0) continue;
-    const ur = (u / cols) | 0, uc = u - ur * cols;
-    const eu = elev[u];
-    for (let d = 0; d < 8; d++) {
-      const vr = ur + DR[d], vc = uc + DC[d];
-      if (vr < 0 || vr >= rows || vc < 0 || vc >= cols) continue;
-      const v = vr * cols + vc;
-      if (done[v]) continue;
-      const bv = base[v];
-      if (bv <= 0) continue;
-      const bmin = bu < bv ? bu : bv;
-      const dm = distOf[d];
-      // slope: theta = atan(dz / dist), f = 2^(theta_deg/10) clamped to [0.5, 8]
-      const theta = Math.atan((elev[v] - eu) / dm) * 180 / Math.PI;
-      let fs = Math.pow(2, theta / 10);
-      if (fs < 0.5) fs = 0.5; else if (fs > 8) fs = 8;
-      const w = dm / (bmin * fs * wf[d] * scale);
-      const nd = du + w;
-      if (nd < dist[v]) { dist[v] = nd; push(nd, v); }
-    }
-  }
-
-  // bucket encoding: round(minutes / bucket_min), 255 past the horizon
-  const out = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    const m = dist[i];
-    out[i] = (m > horizon || !isFinite(m)) ? 255 : Math.min(254, Math.round(m / bucket));
-  }
-
-  // homes reached within the horizon
-  let hit = 0, firstHome = Infinity;
-  const hr = P.homes_rc;
-  for (let i = 0; i < hr.length; i++) {
-    const m = dist[hr[i][0] * cols + hr[i][1]];
-    if (m <= horizon) hit++;
-    if (m < firstHome) firstHome = m;
-  }
-
-  return {
-    buckets: out,
-    stats: {
-      homes_total: hr.length, homes_hit: hit,
-      minutes_to_first_home: isFinite(firstHome) ? +firstHome.toFixed(1) : null,
-      sim_seconds: +((Date.now() - t0) / 1000).toFixed(3),
-    },
-  };
-}
-
-self.onmessage = async e => {
-  const msg = e.data;
-  try {
-    if (msg.type === 'load') {
-      const r = await fetch(`${msg.dataDir}/physics.json`);
-      if (!r.ok) throw new Error(`physics.json: HTTP ${r.status}`);
-      P = await r.json();
-      rows = P.grid.rows; cols = P.grid.cols; n = rows * cols;
-      fuel = b64ToBytes(P.fuel_class_b64);
-      const eb = b64ToBytes(P.elev_m_b64);
-      elev = new Int16Array(eb.buffer, eb.byteOffset, n);
-      base0 = new Float32Array(n);
-      for (let i = 0; i < n; i++) base0[i] = P.rates[fuel[i]] || 0;   // class 0 = 0
-      self.postMessage({
-        type: 'ready', rows, cols, cell_m: P.grid.cell_m,
-        bucket_min: P.bucket_min, horizon_min: P.horizon_min,
-        ignition_rc: P.ignition_rc, wind: P.wind,
-        cost_per_acre: P.cost_per_acre, cell_acres: P.cell_acres,
-        fuel: fuel.slice(),
-      });
-      return;
-    }
-    if (msg.type === 'run') {
-      if (!P) throw new Error('sim not loaded');
-      const res = run(msg.ignition_rc || P.ignition_rc, msg.wind, msg.breaks);
-      self.postMessage({ type: 'result', id: msg.id, buckets: res.buckets, stats: res.stats },
-        [res.buckets.buffer]);
-      return;
-    }
-    if (msg.type === 'parity') {
-      if (!P) throw new Error('sim not loaded');
-      const r = await fetch(`${msg.dataDir}/parity.json`);
-      if (!r.ok) throw new Error(`parity.json: HTTP ${r.status}`);
-      const par = await r.json();
-      const report = [];
-      const cases = [
-        ['baseline', b64ToBytes(par.baseline_b64), []],
-        ['break', b64ToBytes(par.break_b64),
-          (par.break_cells || []).map(rc => rc[0] * cols + rc[1])],
-      ];
-      for (const [name, want, breaks] of cases) {
-        const got = run(P.ignition_rc, P.wind, breaks).buckets;
-        let within1 = 0, exact = 0, worst = 0;
-        for (let i = 0; i < n; i++) {
-          const a = got[i], bwant = want[i];
-          const d = a === bwant ? 0 : (a === 255 || bwant === 255) ? 255 : Math.abs(a - bwant);
-          if (d === 0) exact++;
-          if (d <= 1) within1++;
-          if (d !== 255 && d > worst) worst = d;
+    pop() {
+      const keys = this.keys, vals = this.vals;
+      const topV = vals[0];
+      const n = --this.n;
+      if (n > 0) {
+        const k = keys[n], v = vals[n];
+        let i = 0;
+        for (;;) {
+          let c = 2 * i + 1;
+          if (c >= n) break;
+          if (c + 1 < n && keys[c + 1] < keys[c]) c++;
+          if (keys[c] >= k) break;
+          keys[i] = keys[c]; vals[i] = vals[c];
+          i = c;
         }
-        report.push({
-          case: name, cells: n,
-          pct_within_1: +(100 * within1 / n).toFixed(3),
-          pct_exact: +(100 * exact / n).toFixed(3),
-          worst_bucket_delta: worst,
-        });
+        keys[i] = k; vals[i] = v;
       }
-      self.postMessage({ type: 'parity', report });
-      return;
+      return topV;
     }
-  } catch (err) {
-    self.postMessage({ type: 'error', where: msg && msg.type, message: String(err && err.message || err) });
   }
-};
+
+  class FireSim {
+    constructor(physics) {
+      const g = physics.grid;
+      this.rows = g.rows; this.cols = g.cols; this.cellM = g.cell_m;
+      this.n = this.rows * this.cols;
+      this.fuel = b64ToBytes(physics.fuel_class_b64);
+      const eb = b64ToBytes(physics.elev_m_b64);
+      this.elev = new Int16Array(eb.buffer, eb.byteOffset, this.n);
+      this.rates = physics.rates;
+      this.scale = physics.scale_m_per_min;
+      this.kW = physics.k_w;
+      this.breakMult = physics.break_mult;
+      this.horizon = physics.horizon_min;
+      this.bucketMin = physics.bucket_min || 5;
+      this.homesRc = physics.homes_rc;
+      this.ignitionRc = physics.ignition_rc;
+      this.wind = { speed_mph: physics.wind.speed_mph, from_deg: physics.wind.from_deg };
+      this.base = new Float64Array(this.n);
+      for (let i = 0; i < this.n; i++) {
+        const f = this.fuel[i];
+        this.base[i] = f === 0 ? 0 : (this.rates[String(f)] || 0);
+      }
+      // Per-direction constants that do not depend on wind.
+      this.dist = NEIGH.map(([dr, dc]) => this.cellM * Math.hypot(dr, dc));
+      this.setWind(this.wind.speed_mph, this.wind.from_deg);
+      this._heap = new Heap(this.n * 2);
+    }
+
+    setWind(speedMph, fromDeg) {
+      this.wind = { speed_mph: speedMph, from_deg: fromDeg };
+      const down = (((fromDeg + 180) % 360) + 360) % 360 * Math.PI / 180;
+      this.fWind = NEIGH.map(([dr, dc]) => {
+        const bearing = Math.atan2(dc, -dr);
+        return Math.exp(this.kW * (speedMph / 10) * Math.cos(bearing - down));
+      });
+    }
+
+    cellOf(row, col) { return row * this.cols + col; }
+
+    /* breakMask: Uint8Array(n) (1 = cleared) or null. Returns Float64Array
+       arrival minutes; Infinity where unreached. */
+    run(ignitionCell, breakMask) {
+      const { rows, cols, n, base, elev, dist, fWind, scale, breakMult } = this;
+      const arrival = new Float64Array(n).fill(Infinity);
+      if (ignitionCell < 0 || ignitionCell >= n) return arrival;
+      const eff = breakMask
+        ? base.map((b, i) => (breakMask[i] ? b * breakMult : b))
+        : base;
+      const heap = this._heap; heap.n = 0;
+      arrival[ignitionCell] = 0;
+      heap.push(0, ignitionCell);
+      const done = new Uint8Array(n);
+      while (heap.n > 0) {
+        const i = heap.pop();
+        if (done[i]) continue;
+        done[i] = 1;
+        const di = arrival[i];
+        const bi = eff[i];
+        if (bi === 0) continue;
+        const r = (i / cols) | 0, c = i - r * cols;
+        for (let k = 0; k < 8; k++) {
+          const dr = NEIGH[k][0], dc = NEIGH[k][1];
+          const rr = r + dr, cc = c + dc;
+          if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+          const j = rr * cols + cc;
+          if (done[j]) continue;
+          const bj = eff[j];
+          if (bj === 0) continue;
+          const bmin = bi < bj ? bi : bj;
+          const d = dist[k];
+          const theta = Math.atan((elev[j] - elev[i]) / d) * 180 / Math.PI;
+          let fs = Math.pow(2, theta / 10);
+          if (fs < 0.5) fs = 0.5; else if (fs > 8) fs = 8;
+          const w = d / (bmin * fs * fWind[k] * scale);
+          const nd = di + w;
+          if (nd < arrival[j]) { arrival[j] = nd; heap.push(nd, j); }
+        }
+      }
+      return arrival;
+    }
+
+    /* uint16 grid in the baseline.json convention (65535 = never / beyond horizon). */
+    toU16(arrival) {
+      const out = new Uint16Array(this.n);
+      for (let i = 0; i < this.n; i++) {
+        const a = arrival[i];
+        out[i] = a <= this.horizon ? Math.min(65534, Math.round(a)) : 65535;
+      }
+      return out;
+    }
+
+    /* uint8 5-minute buckets (steps.json / parity.json convention, 255 = never). */
+    toBuckets(arrival) {
+      const out = new Uint8Array(this.n);
+      for (let i = 0; i < this.n; i++) {
+        const a = arrival[i];
+        out[i] = a <= this.horizon ? Math.min(254, Math.round(a / this.bucketMin)) : 255;
+      }
+      return out;
+    }
+
+    homesHit(arrival) {
+      let hit = 0, first = Infinity;
+      for (const [r, c] of this.homesRc) {
+        const a = arrival[r * this.cols + c];
+        if (a <= this.horizon) { hit++; if (a < first) first = a; }
+      }
+      return { hit, minutesToFirstHome: first };
+    }
+  }
+
+  root.FireSim = FireSim;
+  root.FireSim.b64ToBytes = b64ToBytes;
+  if (typeof module !== 'undefined' && module.exports) module.exports = { FireSim, b64ToBytes };
+})(typeof window !== 'undefined' ? window : globalThis);

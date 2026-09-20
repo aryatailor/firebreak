@@ -15,15 +15,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-import common
-import fetch_data
 import build_grid
 import calibrate
-import simulate
 import candidates
-import solve
+import common
+import ensemble
 import export
-import physics
+import fetch_data
+import simulate
+import solve
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,9 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="assume pipeline/data_raw/<town>/ is already populated")
     p.add_argument("--force", action="store_true",
                    help="re-download inputs even if cached")
-    p.add_argument("--no-solve", action="store_true",
-                   help="free-play region: skip candidates/solver and the "
-                        "calibration gate, export without solver files")
+    p.add_argument("--robust", action="store_true",
+                   help="generate ensemble scenarios and run robust solve")
     return p
 
 
@@ -53,17 +52,18 @@ def main(argv=None) -> None:
                          lambda: fetch_data.run(args.town, force=args.force))
     common.run_stage("grid", args.town,
                      lambda: build_grid.run(args.town, quick=args.quick))
-    common.run_stage("calibrate", args.town,
-                     lambda: calibrate.run(args.town, gate=not args.no_solve))
+    common.run_stage("calibrate", args.town, lambda: calibrate.run(args.town))
     common.run_stage("simulate", args.town, lambda: simulate.run(args.town))
-    if not args.no_solve:
-        common.run_stage("candidates", args.town, lambda: candidates.run(args.town))
-        common.run_stage("solve", args.town, lambda: solve.run(args.town))
-    common.run_stage("export", args.town,
-                     lambda: export.run(args.town, with_solver=not args.no_solve))
-    common.run_stage("physics", args.town, lambda: physics.run(args.town))
+    common.run_stage("candidates", args.town, lambda: candidates.run(args.town))
+    if args.robust:
+        common.run_stage("ensemble", args.town,
+                         lambda: ensemble.run(args.town))
+    common.run_stage("solve", args.town,
+                     lambda: solve.run(args.town, robust=args.robust))
+    common.run_stage("export", args.town, lambda: export.run(args.town))
 
-    print("\nrun_all: full chain done. .\\demo.ps1 (or python serve.py) to see it.")
+    print("\nrun_all: full chain done - web/data is live. "
+          "python -m http.server -d web 8000 to see it.")
     sys.exit(0)
 
 

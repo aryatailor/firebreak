@@ -25,13 +25,12 @@ import json
 import shutil
 import sys
 
-import numpy as np
-
 import common
-import ros
-from simulate import Simulator, to_uint16
-from candidates import cell_costs
+import numpy as np
 from calibrate import ring_break_mask
+from candidates import cell_costs
+from robust import make_pool, scenario_hit
+from simulate import Simulator, to_uint16
 
 
 def b64_grid(arrival: np.ndarray, horizon: int) -> str:
@@ -49,7 +48,7 @@ def b64_grid_u8(arrival: np.ndarray, horizon: int) -> str:
 def cells_to_geojson_feature(sim: Simulator, rr, cc, props: dict,
                              decimals: int = 5) -> dict:
     """Union of cell squares (in Mercator, planar) -> (Multi)Polygon in 4326."""
-    from shapely.geometry import box, mapping
+    from shapely.geometry import box
     from shapely.ops import unary_union
 
     g = sim.geom
@@ -105,11 +104,93 @@ def solution_entry(sim: Simulator, params: dict, base_stats: dict, mask, breaks_
     }
 
 
-def run(town: str, with_solver: bool = True) -> None:
-    """with_solver=False is the free-play export: meta, physics-ready baseline,
-    buildings, basemap, legend - no solutions/steps/curve/breaks, because no
-    solver was run. The index entry for such a town carries story:false and
-    CONTRACT.md tells the page not to expect solver files."""
+def prefix_step_entry(sim: Simulator, base_stats: dict, step: int,
+                      break_ids: list[int], cum_cost: float, cum_saved,
+                      arr: np.ndarray, horizon: int,
+                      include_arrival: bool = True) -> dict:
+    s = sim.stats(arr)
+    bought = (round(s["minutes_to_town_center"] - base_stats["minutes_to_town"], 1)
+              if s["minutes_to_town_center"] is not None
+              and base_stats["minutes_to_town"] is not None else None)
+    entry = {
+        "step": step,
+        "break_ids": break_ids,
+        "cumulative_cost": round(cum_cost),
+        "cumulative_saved": cum_saved,
+        "minutes_to_first_home": s["minutes_to_first_home"],
+        "minutes_to_town": s["minutes_to_town_center"],
+        "minutes_bought": 0 if step == 0 else bought,
+    }
+    if include_arrival:
+        entry["arrival_b64"] = b64_grid_u8(arr, horizon)
+    return entry
+
+
+def build_prefix_plan(sim: Simulator, params: dict, base_stats: dict,
+                      base_arr: np.ndarray, accepted: list[dict],
+                      cand_cells: dict[int, tuple[np.ndarray, np.ndarray]],
+                      horizon: int, include_arrival: bool = True):
+    steps = [prefix_step_entry(
+        sim, base_stats, 0, [], 0.0, 0, base_arr, horizon, include_arrival
+    )]
+    break_features = []
+    prefix_masks = [(0.0, np.zeros(sim.fuel.shape, dtype=bool))]
+    mask = np.zeros(sim.fuel.shape, dtype=bool)
+    for step, item in enumerate(accepted, start=1):
+        rr, cc = cand_cells[item["id"]]
+        mask[rr, cc] = True
+        arr = sim.arrival(params, break_mask=mask)
+        steps.append(prefix_step_entry(
+            sim, base_stats, step, [item["id"]], item["cum_cost"],
+            item["cum_saved"], arr, horizon, include_arrival
+        ))
+        properties = {
+            "id": item["id"], "step": step, "cells": item["cells"],
+            "cost": round(item["cost"]),
+            "fuel_group": dominant_group(sim, rr, cc),
+        }
+        if not include_arrival:
+            properties["cell_idx"] = sorted((rr * sim.cols + cc).tolist())
+            properties["cells"] = len(properties["cell_idx"])
+        break_features.append(cells_to_geojson_feature(
+            sim, rr, cc, properties
+        ))
+        prefix_masks.append((float(item["cum_cost"]), mask.copy()))
+    return steps, {"type": "FeatureCollection", "features": break_features}, prefix_masks
+
+
+def score_prefixes(town: str, params: dict, scenarios: list[dict],
+                   prefix_masks: list[tuple[float, np.ndarray]]) -> list[dict]:
+    baseline_hits = np.asarray(
+        [scenario["baseline_homes_hit"] for scenario in scenarios], dtype=float
+    )
+    weights = np.asarray([scenario["weight"] for scenario in scenarios])
+    scored = []
+    with make_pool(town, params, scenarios) as pool:
+        for step, (cum_cost, prefix_mask) in enumerate(prefix_masks):
+            hit_pairs = pool.map(
+                scenario_hit,
+                [(scenario_id, prefix_mask)
+                 for scenario_id in range(len(scenarios))],
+            )
+            hits = np.zeros(len(scenarios), dtype=float)
+            for scenario_id, hit in hit_pairs:
+                hits[scenario_id] = hit
+            saved = baseline_hits - hits
+            scored.append(
+                {
+                    "step": step,
+                    "cum_cost": round(cum_cost),
+                    "mean_saved": round(float(np.dot(weights, saved)), 1),
+                    "min_saved": int(saved.min()),
+                    "max_saved": int(saved.max()),
+                    "per_scenario_saved": [int(value) for value in saved],
+                }
+            )
+    return scored
+
+
+def _load_prefix_inputs(town: str):
     cfg = common.load_town(town)
     out = common.out_dir(town)
     sim = Simulator(town)
@@ -117,36 +198,69 @@ def run(town: str, with_solver: bool = True) -> None:
     config = json.loads((out / "config.json").read_text(encoding="utf-8"))
     params = config["params"]
     gm = json.loads((out / "grid_meta.json").read_text(encoding="utf-8"))
-    solve = (json.loads((out / "solve_result.json").read_text(encoding="utf-8"))
-             if with_solver else {"accepted": [], "curve": []})
+    solve = json.loads((out / "solve_result.json").read_text(encoding="utf-8"))
 
-    cand_cells = {}
-    if with_solver:
-        z = np.load(out / "candidates.npz")
-        cand_cells = {int(i): (z["flat_r"][s:s + n], z["flat_c"][s:s + n])
-                      for i, (s, n) in enumerate(zip(z["starts"], z["lengths"]))}
+    z = np.load(out / "candidates.npz")
+    cand_cells = {int(i): (z["flat_r"][s:s + n], z["flat_c"][s:s + n])
+                  for i, (s, n) in enumerate(zip(z["starts"], z["lengths"]))}
+    base_arr = sim.arrival(params)
+    bs = sim.stats(base_arr)
+    base_stats = {
+        "buildings_total": bs["homes_total"],
+        "buildings_hit": int(np.count_nonzero(
+            base_arr[sim.b_row, sim.b_col] <= horizon
+        )),
+        "minutes_to_town_center": bs["minutes_to_town_center"],
+        "minutes_to_town": bs["minutes_to_town_center"],
+        "minutes_to_first_home": bs["minutes_to_first_home"],
+    }
+    return (cfg, out, sim, horizon, config, params, gm, solve, cand_cells,
+            base_arr, base_stats)
+
+
+def run_historical_plan_only(town: str) -> None:
+    (cfg, out, sim, horizon, _config, params, _gm, _solve, cand_cells,
+     base_arr, base_stats) = _load_prefix_inputs(town)
+    single_path = out / "solve_result_single.json"
+    if not single_path.exists():
+        raise FileNotFoundError(f"missing {single_path}")
+    single = json.loads(single_path.read_text(encoding="utf-8"))
+    historical_steps, historical_breaks, _ = build_prefix_plan(
+        sim, params, base_stats, base_arr, single["accepted"], cand_cells,
+        horizon, include_arrival=False
+    )
+    web = common.web_dir(cfg)
+    plan_historical = {"steps": historical_steps, "breaks": historical_breaks}
+    (web / "plan_historical.json").write_text(
+        json.dumps(plan_historical, separators=(",", ":")), encoding="utf-8"
+    )
+    total = sum(f.stat().st_size for f in web.iterdir()) / 1e6
+    size = (web / "plan_historical.json").stat().st_size / 1e6
+    print(f"  plan_historical.json: {size:.3f} MB")
+    if total > common.SIZE_CAP_MB:
+        raise SystemExit(
+            f"{web} is {total:.2f} MB > {common.SIZE_CAP_MB:.0f} MB"
+        )
+    print(f"historical plan OK: {web} total = {total:.2f} MB <= "
+          f"{common.SIZE_CAP_MB:.0f} MB")
+
+
+def run(town: str) -> None:
+    (cfg, out, sim, horizon, config, params, gm, solve, cand_cells,
+     base_arr, base_stats) = _load_prefix_inputs(town)
 
     web = common.web_dir(cfg)
     print(f"  export target: {web}")
 
     # --- baseline ---------------------------------------------------------------
-    base_arr = sim.arrival(params)
-    bs = sim.stats(base_arr)
     base_hit_ids = np.nonzero(base_arr[sim.b_row, sim.b_col] <= horizon)[0]
-    base_stats = {
-        "buildings_total": bs["homes_total"],
-        "buildings_hit": int(base_hit_ids.size),
-        "minutes_to_town_center": bs["minutes_to_town_center"],
-        "minutes_to_town": bs["minutes_to_town_center"],
-        "minutes_to_first_home": bs["minutes_to_first_home"],
-    }
     baseline = {"arrival_min_b64": b64_grid(base_arr, horizon),
                 "buildings_hit": base_hit_ids.tolist(), "stats": base_stats}
 
     # --- solutions: greedy prefixes per budget ----------------------------------
     accepted = solve["accepted"]
     solutions = []
-    for budget in (cfg["budgets"] if with_solver else []):
+    for budget in cfg["budgets"]:
         prefix = [a for a in accepted if a["cum_cost"] <= budget]
         mask = np.zeros(sim.fuel.shape, dtype=bool)
         features = []
@@ -167,62 +281,69 @@ def run(town: str, with_solver: bool = True) -> None:
               f"bought {s['minutes_bought_town']} min (town)")
 
     # --- steps.json + breaks.geojson (continuous budget slider) -----------------
-    def step_entry(step, break_ids, cum_cost, cum_saved, arr):
-        s = sim.stats(arr)
-        bought = (round(s["minutes_to_town_center"] - base_stats["minutes_to_town"], 1)
-                  if s["minutes_to_town_center"] is not None
-                  and base_stats["minutes_to_town"] is not None else None)
-        return {"step": step, "break_ids": break_ids,
-                "cumulative_cost": round(cum_cost),
-                "cumulative_saved": cum_saved,
-                "minutes_to_first_home": s["minutes_to_first_home"],
-                "minutes_to_town": s["minutes_to_town_center"],
-                "minutes_bought": 0 if step == 0 else bought,
-                "arrival_b64": b64_grid_u8(arr, horizon)}
+    steps, breaks_geojson, _prefix_masks = build_prefix_plan(
+        sim, params, base_stats, base_arr, accepted, cand_cells, horizon
+    )
+    print(f"  steps.json: {len(steps)} entries (step 0 = baseline + "
+          f"{len(accepted)} greedy steps)")
 
-    steps = [step_entry(0, [], 0.0, 0, base_arr)] if with_solver else []
-    break_features = []
-    step_mask = np.zeros(sim.fuel.shape, dtype=bool)
-    for k, a in enumerate(accepted, start=1):
-        rr, cc = cand_cells[a["id"]]
-        step_mask[rr, cc] = True
-        arr = sim.arrival(params, break_mask=step_mask)
-        steps.append(step_entry(k, [a["id"]], a["cum_cost"], a["cum_saved"], arr))
-        break_features.append(cells_to_geojson_feature(
-            sim, rr, cc,
-            {"id": a["id"], "step": k, "cells": a["cells"],
-             "cost": round(a["cost"]), "fuel_group": dominant_group(sim, rr, cc)}))
-    breaks_geojson = {"type": "FeatureCollection", "features": break_features}
-    if with_solver:
-        print(f"  steps.json: {len(steps)} entries (step 0 = baseline + "
-              f"{len(accepted)} greedy steps)")
+    robust_data = None
+    if solve.get("objective") == "ensemble":
+        ensemble_path = out / "ensemble.json"
+        ensemble_data = json.loads(ensemble_path.read_text(encoding="utf-8"))
+        scenarios = ensemble_data["scenarios"]
+        robust_steps = score_prefixes(town, params, scenarios, _prefix_masks)
+        robust_data = {
+            "scenarios": scenarios,
+            "steps": robust_steps,
+        }
+        single_path = out / "solve_result_single.json"
+        if single_path.exists():
+            single = json.loads(single_path.read_text(encoding="utf-8"))
+            historical_steps, historical_breaks, historical_prefix_masks = (
+                build_prefix_plan(
+                    sim, params, base_stats, base_arr, single["accepted"],
+                    cand_cells, horizon, include_arrival=False
+                )
+            )
+            robust_data["historical_plan"] = {
+                "steps": score_prefixes(
+                    town, params, scenarios, historical_prefix_masks
+                )
+            }
+            plan_historical = {
+                "steps": historical_steps,
+                "breaks": historical_breaks,
+            }
+        else:
+            plan_historical = None
+        print(f"  robust.json: {len(robust_steps)} prefix steps x "
+              f"{len(scenarios)} scenarios")
+    else:
+        plan_historical = None
 
     # --- ring fallback (Zach: ship this if the solver's breaks are ugly) --------
-    if with_solver:
-        ring = ring_break_mask(sim)
-        rr, cc = np.nonzero(ring)
-        ring_cost = float(cell_costs(sim.fuel)[rr, cc].sum())
-        ring_fc = {"type": "FeatureCollection",
-                   "features": [cells_to_geojson_feature(
-                       sim, rr, cc, {"id": "ring", "cells": int(rr.size),
-                                     "cost": round(ring_cost),
-                                     "fuel_group": dominant_group(sim, rr, cc)})]}
-        ring_entry = solution_entry(sim, params, base_stats, ring, ring_fc,
-                                    None, ring_cost, horizon)
-        ring_entry["note"] = ("calibration ring fallback - swap into "
-                              "solutions.json if the solver output is ugly; "
-                              "cost exceeds all budgets")
-        (out / "ring_fallback.json").write_text(json.dumps(ring_entry),
-                                                encoding="utf-8")
-        print(f"  ring fallback: cost ${ring_cost:,.0f}, saved "
-              f"{ring_entry['stats']['houses_saved']} -> "
-              f"{out / 'ring_fallback.json'}")
+    ring = ring_break_mask(sim)
+    rr, cc = np.nonzero(ring)
+    ring_cost = float(cell_costs(sim.fuel)[rr, cc].sum())
+    ring_fc = {"type": "FeatureCollection",
+               "features": [cells_to_geojson_feature(
+                   sim, rr, cc, {"id": "ring", "cells": int(rr.size),
+                                 "cost": round(ring_cost),
+                                 "fuel_group": dominant_group(sim, rr, cc)})]}
+    ring_entry = solution_entry(sim, params, base_stats, ring, ring_fc,
+                                None, ring_cost, horizon)
+    ring_entry["note"] = ("calibration ring fallback - swap into solutions.json "
+                          "if the solver output is ugly; cost exceeds all budgets")
+    (out / "ring_fallback.json").write_text(json.dumps(ring_entry),
+                                            encoding="utf-8")
+    print(f"  ring fallback: cost ${ring_cost:,.0f}, saved "
+          f"{ring_entry['stats']['houses_saved']} -> {out / 'ring_fallback.json'}")
 
     # --- meta -------------------------------------------------------------------
     ign_r, ign_c = config["ignition_cell"]
     meta = {
         "town": cfg["name"], "story": cfg["story"],
-        "crawl": cfg.get("crawl", []),
         "bounds": {k: round(v, 6) for k, v in gm["bounds"].items()},
         "grid": {"rows": gm["rows"], "cols": gm["cols"], "cell_m": gm["cell_m"]},
         "wind": cfg["wind"],
@@ -239,16 +360,16 @@ def run(town: str, with_solver: bool = True) -> None:
         "simplifications": [
             gm["buildings"].get("simplification",
                                 "Homes are estimated from developed-land cells."),
-            "Fire spread is a calibrated graph travel-time model (Dijkstra), "
-            "not fire physics - one free speed parameter fit to the historical "
-            "outcome.",
-            f"One uniform historical wind ({cfg['wind']['speed_mph']:g} mph from "
-            f"{cfg['wind']['from_deg']:g} degrees) for all "
-            f"{horizon // 60} hours; no ember spotting, no weather change.",
-            f"Fuel breaks slow fire {round(1 / params['break_mult'])}x rather than "
-            f"stopping it; costs are rough mechanical-treatment magnitudes, not bids.",
-            f"Fuels are {gm['fuel']['product']}, terrain {gm['terrain']}, both "
-            f"resampled to a {gm['cell_m']:g} m grid.",
+            ("Fire spread is a calibrated graph travel-time model (Dijkstra), "
+             "not fire physics - one free speed parameter fit to the historical "
+             "outcome."),
+            (f"One uniform historical wind ({cfg['wind']['speed_mph']:g} mph from "
+             f"{cfg['wind']['from_deg']:g} degrees) for all "
+             f"{horizon // 60} hours; no ember spotting, no weather change."),
+            (f"Fuel breaks slow fire {round(1 / params['break_mult'])}x rather than "
+             "stopping it; costs are rough mechanical-treatment magnitudes, not bids."),
+            (f"Fuels are {gm['fuel']['product']}, terrain {gm['terrain']}, both "
+             f"resampled to a {gm['cell_m']:g} m grid."),
         ],
     }
 
@@ -263,17 +384,18 @@ def run(town: str, with_solver: bool = True) -> None:
                         zip(sim.b_lat, sim.b_lon, sim.b_row, sim.b_col))]
         files = {
             "meta.json": meta, "baseline.json": baseline,
+            "solutions.json": solutions,
+            "curve.json": {"points": solve["curve"]},
+            "steps.json": steps,
+            "breaks.geojson": breaks_geojson,
             "buildings.geojson": {"type": "FeatureCollection", "features": features},
             "fuel_legend.json": [{"group": g, "color": c}
                                  for g, c in common.GROUP_COLORS.items()],
         }
-        if with_solver:
-            files.update({
-                "solutions.json": solutions,
-                "curve.json": {"points": solve["curve"]},
-                "steps.json": steps,
-                "breaks.geojson": breaks_geojson,
-            })
+        if robust_data is not None:
+            files["robust.json"] = robust_data
+        if plan_historical is not None:
+            files["plan_historical.json"] = plan_historical
         for name, obj in files.items():
             (web / name).write_text(json.dumps(obj, separators=(",", ":")),
                                     encoding="utf-8")
@@ -292,10 +414,14 @@ def run(town: str, with_solver: bool = True) -> None:
 
     sizes = {f.name: round(f.stat().st_size / 1e6, 3) for f in sorted(web.iterdir())}
     print(f"  web/data sizes (MB): {json.dumps(sizes)}")
+    for name in ("robust.json", "plan_historical.json"):
+        if name in sizes:
+            print(f"  {name}: {sizes[name]:.3f} MB")
     print(f"export OK: web/data = {total:.2f} MB <= {SIZE_CAP:.0f} MB, "
-          f"{len(steps)} slider steps ({datetime.date.today().isoformat()})")
-    print(f"\nverify: python -m http.server -d web 8000, flip DATA_DIR to 'data' "
-          f"(frontend session does this)")
+          f"{len(steps)} slider steps "
+          f"({datetime.datetime.now(datetime.timezone.utc).date().isoformat()})")
+    print("\nverify: python -m http.server -d web 8000, flip DATA_DIR to 'data' "
+          "(frontend session does this)")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,15 +430,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Write web/data/ per CONTRACT.md; enforce the 5 MB budget.")
     p.add_argument("--town", default="paradise",
                    help="name of towns/<town>.json (default: paradise)")
-    p.add_argument("--no-solve", action="store_true",
-                   help="free-play export: no solutions/steps/curve/breaks")
+    p.add_argument("--historical-plan-only", action="store_true",
+                   help="rewrite only plan_historical.json from cached results")
     return p
 
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
-    common.run_stage("export", args.town,
-                     lambda: run(args.town, with_solver=not args.no_solve))
+    fn = (run_historical_plan_only if args.historical_plan_only else run)
+    common.run_stage("export", args.town, lambda: fn(args.town))
 
 
 if __name__ == "__main__":

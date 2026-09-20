@@ -217,3 +217,49 @@ across zoom**. There is no slide: what remains is the cost of drawing homes as g
 pixels, which is what the grid-canvas approach is for. Earlier readings of 6 px came
 from probing a home on the grid edge, where the position is clamped so the saved
 ring stays on canvas.
+
+## Merge of PR #1 (Arya) into main, 2026-09-20
+
+Arya's PR branched from before the overnight tiers and rewrote the same four
+frontend files. Per instruction the merge takes **his side for the whole
+frontend** and his pipeline and data work, keeping ours only where he has no
+version. Conservative choices made while resolving:
+
+- **Whole-file, not hunk-level.** `web/app.js`, `web/index.html`, `web/style.css`,
+  `web/sim.js`, `pipeline/export.py`, `pipeline/run_all.py` and
+  `web/towns/index.json` were taken from his branch outright. A hunk-level merge of
+  two independent rewrites would have produced a file neither of us wrote.
+- **`web/data/meta.json`: his file, with our `crawl` array put back.** His branch
+  has no `crawl` key and the opening needs it. Nothing else of ours was restored.
+  `web/towns/altadena/meta.json` was not in his PR, so it keeps our crawl already.
+- **Data and towns are his**, because his app is built against his robust-solver
+  output (`plan_historical.json`, `robust.json`, regenerated steps/solutions).
+  Keeping our older exports would have left his plan toggle pointing at files that
+  do not exist. All three towns survive: paradise, altadena, and his santarosa.
+  Note his `index.json` drops the `story` flag; his app does not read it.
+- **Kept because he has no version:** `web/vendor/fonts/` (Selawik),
+  `web/favicon.svg`, `web/FRONTEND_NOTES.md`, `OVERNIGHT_FRONTEND.md`,
+  `deck/shots/`, and everything under `web/data/` he did not touch
+  (`physics.json`, `parity.json`, `sensitivity.json`).
+
+### The one graft: the cinematic opening
+
+Re-added as **`web/intro.css` + `web/intro.js`**, loaded after leaflet and before
+`sim.js`/`app.js`. **His `app.js` is not edited at all.** The handoff works through
+his own controls:
+
+1. The overlay draws the FIREBREAK title card (red copy behind, blurred and pushed
+   through feTurbulence/feDisplacementMap on an animation frame; the white copy has
+   no filter so it never flickers) and one Enter button.
+2. Enter is the real user gesture, so the overlay immediately clicks **his**
+   `#intro`, which runs his `startApp(true)`: his audio context starts on the
+   gesture, and his walkthrough parks at `armed` without starting a fire.
+3. `body.fb-crawl` hides his panel, caption and map chrome while the overlay flies
+   his map (taken from `window._fb.map`, with an `L.Map.addInitHook` as a second
+   route) from zoom 6 to the region over 10 s, one `meta.crawl` line at a time.
+4. When the crawl ends, or Skip is pressed, the overlay lifts and clicks his
+   `#caption-btn` ("Watch it happen"), which is what starts his fire.
+
+`?intro=0` disables the overlay entirely, so his own tests and flows are untouched.
+Deliberately **not** used for handoff: his `#caption-skip`, which jumps to free play
+and would skip the story.

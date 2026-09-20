@@ -1,0 +1,14 @@
+{
+  "name": "Superior–Louisville, CO",
+  "story": "Superior and Louisville, Colorado. 11:09 AM, December 30, 2021. The Marshall Fire started at Marshall Road in 100 mph downslope winds.",
+  "bounds": {"west": -105.25, "south": 39.92, "east": -105.12, "north": 39.99},
+  "ignition": {"lat": 39.955, "lon": -105.242, "label": "Marshall Rd & CO-93 · 11:09 AM"},
+  "wind": {"speed_mph": 60, "from_deg": 270},
+  "town_center": {"lat": 39.953, "lon": -105.168},
+  "homes_estimate": 14000,
+  "homes_note": "Homes are estimated from developed-land cells at pre-fire density (Superior ~5,000 and Louisville ~9,000 housing units), not individual footprints.",
+  "fuel_layer": "LF2016_FBFM40",
+  "web_dir": "towns/superior",
+  "horizon_min": 720,
+  "budgets": [500000, 1000000, 2000000, 3000000]
+}

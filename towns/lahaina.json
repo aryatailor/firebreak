@@ -1,0 +1,14 @@
+{
+  "name": "Lahaina, HI",
+  "story": "Lahaina, Maui. Afternoon of August 8, 2023. A downed power line above Lahainaluna Road re-ignited in 60 mph downslope winds.",
+  "bounds": {"west": -156.71, "south": 20.84, "east": -156.61, "north": 20.905},
+  "ignition": {"lat": 20.888, "lon": -156.652, "label": "Lahainaluna Rd · 2:55 PM"},
+  "wind": {"speed_mph": 45, "from_deg": 75},
+  "town_center": {"lat": 20.878, "lon": -156.680},
+  "homes_estimate": 4500,
+  "homes_note": "Homes are estimated from developed-land cells at pre-fire density (Lahaina CDP, ~12,700 people / ~3 per household), not individual footprints.",
+  "fuel_layer": "LF2022_FBFM40",
+  "web_dir": "towns/lahaina",
+  "horizon_min": 720,
+  "budgets": [500000, 1000000, 2000000, 3000000]
+}

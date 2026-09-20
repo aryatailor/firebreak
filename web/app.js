@@ -12,15 +12,6 @@ const FORCE_OFFLINE = PARAMS.has('offline');
 const SKIP_INTRO = PARAMS.get('intro') === '0';
 const $ = id => document.getElementById(id);
 
-/* Switching region reloads the page against that town's data dir, which replays the
-   opening with its own crawl. A reload is the one way to be sure nothing is stale. */
-function goToTown(id) {
-  const p = new URLSearchParams(location.search);
-  p.set('town', id);
-  p.delete('data');
-  location.search = p.toString();
-}
-
 async function loadJSON(name) {
   const r = await fetch(`${DATA_DIR}/${name}`);
   if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
@@ -170,10 +161,6 @@ const FireLayer = L.Layer.extend({
         } else if (age >= RAMP_SPAN) A = 179;                    // charcoal at 0.70
         else if (age >= 120) A = 217 - ((age - 120) * 38) / 60;  // 0.85 → 0.70
         else A = 217;                                            // body at 0.85
-        if (mask && mask[i]) {
-          // burnt-over cleared ground keeps reading as cleared ground: a pale scar
-          R = (R + 217 * 1.2) / 2.2; G = (G + 201 * 1.2) / 2.2; B = (B + 163 * 1.2) / 2.2;
-        }
         A *= ef[i];                               // fade out at the grid boundary
         if (age <= GLOW_SPAN) {                   // fresh ignition: amber-white glow
           gd[go] = 255; gd[go + 1] = 226; gd[go + 2] = 150;
@@ -207,26 +194,21 @@ const FireLayer = L.Layer.extend({
       const hx = this._hx, hy = this._hy, hst = this._hst;
       for (let i = 0; i < hx.length; i++) {
         const x = hx[i], y = hy[i], o = (y * W2 + x) * 4;
-        // same edge feather as the fire, so the built-up area never ends in a
-        // straight line along the grid boundary
-        const fade = ef[((y >> 1) * cols) + (x >> 1)];
-        if (fade <= 0) continue;
         const burned = hst[i] === 1;
         const R = burned ? 255 : 216, G = burned ? 59 : 216, B = burned ? 59 : 211;
-        const A = (burned ? 255 : 204) * fade;
+        const A = burned ? 255 : 204;
         for (const p of [o, o + 4, o + row4, o + row4 + 4]) {
           d[p] = R; d[p + 1] = G; d[p + 2] = B; d[p + 3] = A;
         }
         if (hst[i] === 2) {          // saved: 1 px green ring around the block
-          const ringA = 210 * fade;
           const top = o - row4 - 4, bot = o + 2 * row4 - 4;
           for (let k = 0; k < 4; k++) {
             for (const p of [top + k * 4, bot + k * 4]) {
-              d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = ringA;
+              d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = 255;
             }
           }
           for (const p of [o - 4, o + 8, o + row4 - 4, o + row4 + 8]) {
-            d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = ringA;
+            d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = 255;
           }
         }
       }
@@ -408,6 +390,11 @@ function rasterizeBreaks(breaksFC, meta) {
     return inside;
   };
   const breaks = breaksFC.features.map((ft, bi) => {
+    if (Array.isArray(ft.properties.cell_idx)) {
+      const cells = ft.properties.cell_idx;
+      for (const i of cells) cellBreak[i] = bi;
+      return { props: ft.properties, step: ft.properties.step ?? bi + 1, cells };
+    }
     const ring = ft.geometry.coordinates[0].map(([lon, lat]) => [lonToCol(lon), latToRow(lat)]);
     let c0 = Infinity, c1 = -Infinity, r0 = Infinity, r1 = -Infinity;
     for (const [x, y] of ring) {
@@ -432,7 +419,6 @@ function rasterizeBreaks(breaksFC, meta) {
    impulses. Level tracks the active front size. Must never throw. */
 function makeAudio() {
   let ctx = null, master = null, muted = false, level = 0;
-  let windGain = null;            // quiet low bed under the opening crawl
   function start() {
     if (ctx) return;
     try {
@@ -455,16 +441,6 @@ function makeAudio() {
       const bed = ctx.createGain(); bed.gain.value = 0.7;
       src.connect(lp); lp.connect(bed); bed.connect(master);
       src.start();
-
-      // wind bed: the same noise, far lower and slowly breathing, straight to output
-      const wsrc = ctx.createBufferSource(); wsrc.buffer = buf; wsrc.loop = true;
-      const wlp = ctx.createBiquadFilter(); wlp.type = 'lowpass'; wlp.frequency.value = 190;
-      windGain = ctx.createGain(); windGain.gain.value = 0;
-      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07;
-      const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.018;
-      lfo.connect(lfoGain); lfoGain.connect(windGain.gain);
-      wsrc.connect(wlp); wlp.connect(windGain); windGain.connect(ctx.destination);
-      wsrc.start(); lfo.start();
       setInterval(() => {
         try {
           if (!ctx || muted || level < 0.02) return;
@@ -497,25 +473,13 @@ function makeAudio() {
       master.gain.linearRampToValueAtTime(Math.min(0.5, x * 0.5), ctx.currentTime + 0.15);
     } catch (e) { /* ignore */ }
   }
-  function setWind(on) {
-    if (!ctx || !windGain) return;
-    try {
-      const target = on && !muted ? 0.05 : 0;
-      windGain.gain.cancelScheduledValues(ctx.currentTime);
-      windGain.gain.setValueAtTime(windGain.gain.value, ctx.currentTime);
-      windGain.gain.linearRampToValueAtTime(target, ctx.currentTime + 1.4);
-    } catch (e) { /* audio must never break the page */ }
-  }
   function toggleMute() {
     muted = !muted;
     if (!ctx) return muted;
-    try {
-      master.gain.value = muted ? 0 : Math.min(0.5, level * 0.5);
-      if (windGain) windGain.gain.value = muted ? 0 : windGain.gain.value;
-    } catch (e) { /* ignore */ }
+    try { master.gain.value = muted ? 0 : Math.min(0.5, level * 0.5); } catch (e) { /* ignore */ }
     return muted;
   }
-  return { start, setLevel, setWind, toggleMute, isMuted: () => muted, isActive: () => !!ctx };
+  return { start, setLevel, toggleMute, isMuted: () => muted, isActive: () => !!ctx };
 }
 
 /* Inline SVG: step curve of cumulative cost vs cumulative homes saved (curve.json),
@@ -581,7 +545,7 @@ function buildWaffle(total) {
   cv.style.width = `${COLS * CELL}px`; cv.style.height = `${rows * CELL}px`;
   const ctx = cv.getContext('2d');
   ctx.scale(dpr, dpr);
-  $('waffle-caption').textContent = `1 SQ = ${unit} ${unit === 1 ? 'HOME' : 'HOMES'}`;
+  $('waffle-caption').textContent = `1 square = ${unit} ${unit === 1 ? 'home' : 'homes'}`;
   return {
     draw(hitCount, savedCount) {
       const red = Math.min(n, Math.round(hitCount / unit));
@@ -619,19 +583,10 @@ async function loadModel() {
         b64u8: s.arrival_b64, breakCount: cum,
       };
     });
-    return { steps, breaksFC, dense: true, solver: true };
+    return { steps, breaksFC, dense: true };
   } catch (err) {
-    console.warn(`steps.json or breaks.geojson unavailable (${err.message}), trying snap budgets`);
-    let solutions;
-    try {
-      solutions = await loadJSON('solutions.json');
-    } catch (err2) {
-      // a free-play region (story:false): no solver output at all, and that is fine
-      return {
-        steps: [{ cost: 0, saved: 0, minutesBought: 0, breakCount: 0 }],
-        breaksFC: { type: 'FeatureCollection', features: [] }, dense: false, solver: false,
-      };
-    }
+    console.warn(`steps.json/breaks.geojson unavailable (${err.message}) — snap budgets only`);
+    const solutions = await loadJSON('solutions.json');
     const feats = [], seen = new Set();
     const steps = [{ cost: 0, saved: 0, minutesBought: 0, breakCount: 0 }];
     solutions.forEach((sol, i) => {
@@ -648,117 +603,118 @@ async function loadModel() {
         b64u16: sol.arrival_min_b64, breakCount: seen.size,
       });
     });
-    return { steps, breaksFC: { type: 'FeatureCollection', features: feats }, dense: false, solver: true };
+    return { steps, breaksFC: { type: 'FeatureCollection', features: feats }, dense: false };
   }
+}
+
+/* Plans. The robust plan (steps.json, breaks.geojson) is the default. When the
+   pipeline ran with --robust it also ships plan_historical.json (the plan solved
+   for the historical fire only, no grids: the browser re-simulates them) and
+   robust.json (both plans scored across the ignition+wind ensemble). */
+async function loadPlans() {
+  const optional = name => loadJSON(name).catch(() => null);
+  const [model, robust, histPlan] = await Promise.all([
+    loadModel(), optional('robust.json'), optional('plan_historical.json'),
+  ]);
+  if (!robust || !histPlan || !robust.historical_plan) {
+    return { plans: { robust: model }, order: ['robust'], nScenarios: 0 };
+  }
+  const expected = steps => steps.map(s => s.mean_saved);
+  // steps.json for the robust plan carries the ensemble mean; the panel's
+  // "historical fire" number is scenario 0 (historical ignition, calibrated wind).
+  robust.steps.forEach((s, i) => {
+    if (model.steps[i]) model.steps[i].saved = s.per_scenario_saved[0];
+  });
+  let cum = 0;
+  const histScored = robust.historical_plan.steps;
+  const histSteps = histPlan.steps.map((s, i) => {
+    cum += (s.break_ids || []).length;
+    const scored = histScored[i];
+    return {
+      cost: s.cumulative_cost,
+      saved: scored ? scored.per_scenario_saved[0] : s.cumulative_saved,
+      minutesBought: s.minutes_bought == null ? null : s.minutes_bought,
+      breakCount: cum, live: true,
+    };
+  });
+  return {
+    plans: {
+      robust: Object.assign(model, { expected: expected(robust.steps) }),
+      historical: { steps: histSteps, breaksFC: histPlan.breaks, dense: true,
+                    expected: expected(robust.historical_plan.steps) },
+    },
+    order: ['robust', 'historical'],
+    nScenarios: robust.scenarios.length,
+  };
 }
 
 async function main() {
   // Town selector (CONTRACT.md web/towns/index.json): >1 entries → dropdown;
   // missing file or a single entry → none. Selecting reloads with ?town=<id>.
-  let towns = [], entry = null;
+  let towns = null;
   try {
     const tr = await fetch('towns/index.json');
-    if (tr.ok) {
-      const j = await tr.json();
-      if (Array.isArray(j)) towns = j;
-    }
-  } catch (e) { /* no manifest, fall back to the default data dir */ }
-  if (towns.length) {
+    if (tr.ok) towns = await tr.json();
+  } catch (e) { /* no manifest — default data dir */ }
+  if (Array.isArray(towns) && towns.length > 0) {
     const want = PARAMS.get('town');
-    entry = towns.find(t => t.id === want) || towns[0];
+    const entry = towns.find(t => t.id === want) || towns[0];
     if (!PARAMS.get('data')) DATA_DIR = entry.data_dir.replace(/\/+$/, '');
     if (towns.length > 1) {
       const sel = $('town-select');
       sel.hidden = false;
       document.body.classList.add('has-towns');
       sel.innerHTML = towns.map(t =>
-        `<option value="${t.id}"${t.id === entry.id ? ' selected' : ''}>${t.name} · ${t.event}</option>`).join('');
-      sel.onchange = () => goToTown(sel.value);
+        `<option value="${t.id}"${t.id === entry.id ? ' selected' : ''}>${t.name} — ${t.event}</option>`).join('');
+      sel.onchange = () => {
+        const p = new URLSearchParams(location.search);
+        p.set('town', sel.value);
+        location.search = p.toString();
+      };
     }
   }
 
   const meta = await loadJSON('meta.json');
-  const optional = (name, fallback) => loadJSON(name).catch(() => fallback);
-  const [baseline, curve, buildingsFC, legend, model] = await Promise.all([
-    loadJSON('baseline.json'), optional('curve.json', { points: [] }),
-    loadJSON('buildings.geojson'), optional('fuel_legend.json', []), loadModel(),
+  const [baseline, curve, buildingsFC, legend, planSet, physics] = await Promise.all([
+    loadJSON('baseline.json'), loadJSON('curve.json'),
+    loadJSON('buildings.geojson'), loadJSON('fuel_legend.json'), loadPlans(),
+    // physics.json is optional: without it there is no what-if mode.
+    loadJSON('physics.json').catch(err => { console.warn(`no physics.json (${err.message})`); return null; }),
   ]);
   const { rows, cols } = meta.grid, b = meta.bounds;
   const bounds = L.latLngBounds([b.south, b.west], [b.north, b.east]);
   const H = meta.horizon_min;
   const maxBudget = meta.budgets[meta.budgets.length - 1];
 
+  const { plans, nScenarios } = planSet;
+  let planId = 'robust';
+  let model = plans[planId];
+  const hasPlans = planSet.order.length > 1;
+  const planNotes = {
+    robust: `Chosen to save the most homes on average across many plausible ignition points and winds — not just the fire that happened.`,
+    historical: `Chosen for the historical ignition and wind only. Stronger on that fire, weaker when the fire starts somewhere else.`,
+  };
+
   $('story').textContent = meta.story;
   $('legend').innerHTML = legend.map(g =>
     `<span class="chip"><i style="background:${g.color}"></i>${g.group}</span>`).join('');
   $('simp-list').innerHTML = meta.simplifications.map(s => `<li>${s}</li>`).join('');
 
-  const map = L.map('map', {
-    zoomSnap: 0.25, minZoom: 4, maxZoom: 17,
-    zoomControl: false,                 // rebuilt top right, clear of the brand
-    wheelPxPerZoomLevel: 45, wheelDebounceTime: 12,   // fast, smooth wheel zoom
-  });
-  L.control.zoom({ position: 'topright' }).addTo(map);
+  const map = L.map('map', { zoomSnap: 0.25, maxZoom: 17 });
   map.fitBounds(bounds, { padding: [10, 10] });
   map.createPane('fire').style.zIndex = 405;
-  window._fb = { map, bounds: b, rows, cols };   // debug/test handle
+  window._fb = { map };   // debug/test handle
 
-  /* "US" flies out to the continental view, where every region shows as a marker. */
-  const US_BOUNDS = L.latLngBounds([24.5, -125.0], [49.4, -66.9]);
-  const UsControl = L.Control.extend({
-    options: { position: 'topright' },
-    onAdd() {
-      const el = L.DomUtil.create('button', 'us-btn mono');
-      el.type = 'button';
-      el.textContent = 'US';
-      el.title = 'Zoom out to the United States';
-      L.DomEvent.disableClickPropagation(el);
-      L.DomEvent.on(el, 'click', () => map.flyToBounds(US_BOUNDS, { duration: 1.6 }));
-      return el;
-    },
-  });
-  map.addControl(new UsControl());
-
-  /* Below zoom 9 the region markers replace the fire: one per town in the index.
-     Centres come from each town's own meta.bounds, fetched once, in the background. */
-  const regionLayer = L.layerGroup();
-  (async () => {
-    for (const t of towns) {
-      let ll = null;
-      if (entry && t.id === entry.id) ll = bounds.getCenter();
-      else {
-        try {
-          const r = await fetch(`${t.data_dir.replace(/\/+$/, '')}/meta.json`);
-          if (!r.ok) continue;
-          const m = await r.json();
-          ll = L.latLng((m.bounds.north + m.bounds.south) / 2, (m.bounds.east + m.bounds.west) / 2);
-        } catch (e) { continue; }
-      }
-      L.marker(ll, {
-        icon: L.divIcon({
-          className: 'region-pin', iconSize: [0, 0],
-          html: `<span class="region-dot"></span><span class="region-label">` +
-                `<b>${t.name}</b>${t.event ? `<i>${t.event}</i>` : ''}</span>`,
-        }),
-      }).on('click', () => goToTown(t.id)).addTo(regionLayer);
-    }
-    syncRegionPins();
-  })();
-  function syncRegionPins() {
-    const show = map.getZoom() < 9 && regionLayer.getLayers().length > 0;
-    if (show && !map.hasLayer(regionLayer)) regionLayer.addTo(map);
-    if (!show && map.hasLayer(regionLayer)) map.removeLayer(regionLayer);
-    document.body.classList.toggle('wide-view', map.getZoom() < 9);
-  }
-  map.on('zoomend', syncRegionPins);
-
-  const windDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(meta.wind.from_deg / 45) % 8];
-  const statusBits = mode => [
-    mode, `${Math.round(meta.grid.cell_m)} M CELLS`,
-    `WIND ${windDir} ${meta.wind.speed_mph} MPH`,
+  const compass = deg => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+  let wind = { speed_mph: meta.wind.speed_mph, from_deg: meta.wind.from_deg };
+  let basemapMode = '…';
+  const statusBits = () => [
+    basemapMode, `${meta.grid.cell_m} m cells`,
+    `wind ${compass(wind.from_deg)} ${wind.speed_mph} mph`,
   ].join(' · ');
   setupBasemap(map, bounds, mode => {
-    $('basemap-status').textContent = statusBits(mode);
+    basemapMode = mode;
+    $('basemap-status').textContent = statusBits();
     $('legend').hidden = !mode.startsWith('OFFLINE');
   });
 
@@ -777,64 +733,98 @@ async function main() {
     hx[i] = Math.min(W2 - 3, Math.max(1, Math.round(gx) - 1));
     hy[i] = Math.min(H2 - 3, Math.max(1, Math.round(gy) - 1));
   });
-  $('homes-label').textContent = `02 HOMES SAVED / ${nB.toLocaleString()}`;
+  $('homes-label').textContent = hasPlans ? 'Expected homes saved' : `Homes saved (of ${nB.toLocaleString()})`;
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
   fire.setHomes(hx, hy, states);
   // 6:30 AM is the Camp Fire's ignition time — Paradise-only until meta grows a field.
   const ignTime = meta.town.startsWith('Paradise') ? ' · 6:30 AM' : '';
+  const histIgnLabel = `${meta.ignition.label.split(' (')[0]}${ignTime}`;
+  const ignIcon = label => L.divIcon({
+    className: 'ign', iconSize: [0, 0],
+    html: `<span class="ign-dot"></span><span class="ign-label">${label}</span>`,
+  });
   const ignMarker = L.marker([meta.ignition.lat, meta.ignition.lon], {
-    interactive: false, keyboard: false,
-    icon: L.divIcon({
-      className: 'ign', iconSize: [0, 0],
-      html: `<span class="ign-dot"></span><span class="ign-label">${meta.ignition.label.split(' (')[0]}${ignTime}</span>`,
-    }),
+    interactive: false, keyboard: false, icon: ignIcon(histIgnLabel),
   }).addTo(map);
 
   // Breaks → cells; mask marks active break cells, edge bits their outward rim.
-  const braster = rasterizeBreaks(model.breaksFC, meta);
+  let braster = rasterizeBreaks(model.breaksFC, meta);
   const breakMask = new Uint8Array(rows * cols);
   const breakEdge = new Uint8Array(rows * cols);   // bits: 1 N, 2 S, 4 W, 8 E
   fire.setBreaks(breakMask, braster.cellBreak, breakEdge);
-  /* Edge bits mark which sides of a cleared cell face open ground, so the strip
-     gets a lighter rim. Shared by the solver's breaks and hand-drawn ones. */
-  function computeBreakEdges(cellList) {
-    for (const c of cellList) {
-      const r = (c / cols) | 0, cc = c % cols;
-      let e = 0;
-      if (r === 0 || !breakMask[c - cols]) e |= 1;
-      if (r === rows - 1 || !breakMask[c + cols]) e |= 2;
-      if (cc === 0 || !breakMask[c - 1]) e |= 4;
-      if (cc === cols - 1 || !breakMask[c + 1]) e |= 8;
-      breakEdge[c] = e;
-    }
-  }
   function rebuildBreakMask(stepIdx) {
     breakMask.fill(0); breakEdge.fill(0);
-    const active = [];
     for (const bk of braster.breaks) {
-      if (bk.step <= stepIdx) for (const c of bk.cells) { breakMask[c] = 1; active.push(c); }
+      if (bk.step <= stepIdx) for (const c of bk.cells) breakMask[c] = 1;
     }
-    computeBreakEdges(active);
-  }
-  function setMaskFromCells(cellList) {
-    breakMask.fill(0); breakEdge.fill(0);
-    for (const c of cellList) breakMask[c] = 1;
-    computeBreakEdges(cellList);
+    for (const bk of braster.breaks) {
+      if (bk.step > stepIdx) continue;
+      for (const c of bk.cells) {
+        const r = (c / cols) | 0, cc = c % cols;
+        let e = 0;
+        if (r === 0 || !breakMask[c - cols]) e |= 1;
+        if (r === rows - 1 || !breakMask[c + cols]) e |= 2;
+        if (cc === 0 || !breakMask[c - 1]) e |= 4;
+        if (cc === cols - 1 || !breakMask[c + 1]) e |= 8;
+        breakEdge[c] = e;
+      }
+    }
   }
 
   // Grids: step 0 = baseline (uint16 from baseline.json); later steps decode their
   // uint8 bucket grids — or uint16 grids in the snap-budget fallback — on demand.
-  const baseGrid = decodeGrid(baseline.arrival_min_b64, rows, cols);
+  const histBase = decodeGrid(baseline.arrival_min_b64, rows, cols);
+  let baseGrid = histBase;
   const stepGrids = [];
+  // What-if scenario: user-placed ignition and/or wind, simulated in the browser
+  // (sim.js) against the shipped breaks. null = the historical, precomputed run.
+  const sim = physics && window.FireSim ? new FireSim(physics) : null;
+  const histIgnCell = sim ? sim.cellOf(physics.ignition_rc[0], physics.ignition_rc[1]) : -1;
+  if (hasPlans && !sim) plans.historical = undefined;   // its grids need the browser sim
+  let scenario = null;            // { cell, wind: {speed_mph, from_deg} }
+  let scenGrids = [], scenStats = [];
+  const firstHomeMin = grid => {
+    let first = Infinity;
+    for (let i = 0; i < nB; i++) { const a = grid[cells[i]]; if (a <= H && a < first) first = a; }
+    return first;
+  };
   const gridForStep = s => {
+    if (scenario) {
+      if (s === 0) return baseGrid;
+      if (scenGrids[s]) return scenGrids[s];
+      const g = scenGrids[s] = sim.toU16(sim.run(scenario.cell, breakMask));
+      let saved = 0;
+      for (let i = 0; i < nB; i++) {
+        const bb = baseGrid[cells[i]], cb = g[cells[i]];
+        if (bb <= H && cb > H) saved++;
+      }
+      const f0 = firstHomeMin(baseGrid), f1 = firstHomeMin(g);
+      scenStats[s] = { saved, minutesBought: f0 === Infinity ? null : Math.min(f1, H) - f0 };
+      return g;
+    }
     if (s === 0) return baseGrid;
     if (stepGrids[s]) return stepGrids[s];
     const st = model.steps[s];
+    if (st.live) {   // plan shipped without grids: historical fire, simulated here
+      sim.setWind(meta.wind.speed_mph, meta.wind.from_deg);
+      return (stepGrids[s] = sim.toU16(sim.run(histIgnCell, breakMask)));
+    }
     return (stepGrids[s] = st.b64u8
       ? decodeStepGrid(st.b64u8, rows, cols, 5, 255)
       : decodeGrid(st.b64u16, rows, cols));
   };
+  // Per-step numbers: the solver's (historical run) or the live scenario's.
+  const stepInfo = s => {
+    const st = model.steps[s];
+    const expected = model.expected ? model.expected[s] : null;
+    if (!scenario) return Object.assign({}, st, { expected });
+    const sc = s === 0 ? { saved: 0, minutesBought: 0 } : scenStats[s];
+    return { cost: st.cost, breakCount: st.breakCount, saved: sc.saved, minutesBought: sc.minutesBought, expected };
+  };
+  const curvePoints = () => model.steps.slice(1).map((st, i) => ({
+    cumulative_cost: st.cost, cumulative_saved: model.expected ? Math.round(model.expected[i + 1]) : st.saved,
+  }));
   const stepForBudget = v => {
     let s = 0;
     for (let i = 0; i < model.steps.length; i++) {
@@ -843,45 +833,35 @@ async function main() {
     return s;
   };
 
-  if (!model.solver) {          // free-play region: no budget, no curve to show
-    $('budget-block').hidden = true;
-    $('info-card').querySelector('h2').hidden = true;
-    $('curve').hidden = true;
-    $('curve-sentence').hidden = true;
-  }
-  const chart = buildCurve(curve.points);
+  let chart = buildCurve(curvePoints());
   const waffle = buildWaffle(nB);
   const audio = makeAudio();
   const state = { t: 0, budget: 0, step: 0, arrival: baseGrid };
-  let fpBaseGrid = null;      // free play's own no-breaks run, for "homes saved"
   let maxFresh = 1;
-  let flow = 'crawl';   // walkthrough state (see setWalk)
-  const skipEl = $('skip');
-  const STATE_ZOOM = 6;                       // state scale, where the opening starts
-  const townCenter = bounds.getCenter();      // the whole burn area, town included
-  const targetZoom = map.getBoundsZoom(bounds, false, L.point(24, 24));
+  let flow = 'armed';   // walkthrough state (see setWalk)
   let lastCounts = { hit: 0, saved: 0 };
 
   const fmtInt = n => n.toLocaleString();
   function updateStats() {
-    setNum($('stat-saved'), lastCounts.saved, fmtInt);
-    if (flow === 'free') {
-      // free play has its own spend and its own delay, not the solver's
+    const st = stepInfo(state.step);
+    const mb = st.minutesBought == null ? '—' : `+${Math.round(st.minutesBought)}`;
+    if (st.expected != null) {
+      setNum($('stat-saved'), Math.round(st.expected), fmtInt);
+      $('stat-sub').textContent = `on average, across ${nScenarios} plausible fires · of ${nB.toLocaleString()} homes`;
       $('stat-line').textContent =
-        `SPENT ${fmtMoney(fp.cost || 0)} · +${Math.round(fp.minutesBought || 0)} MIN TO FIRST HOME`;
-      return;
+        `${scenario ? 'This fire' : 'The historical fire'}: ${st.saved.toLocaleString()} saved · ${mb} min evacuation · ${fmtMoney(st.cost)} spent`;
+    } else {
+      setNum($('stat-saved'), lastCounts.saved, fmtInt);
+      $('stat-sub').textContent = '';
+      $('stat-line').textContent = `Spent ${fmtMoney(st.cost)} · ${mb} min evacuation`;
     }
-    const st = model.steps[state.step];
-    const mb = st.minutesBought == null ? '0' : `+${Math.round(st.minutesBought)}`;
-    $('stat-line').textContent = `SPENT ${fmtMoney(st.cost)} · ${mb} MIN EVACUATION`;
   }
 
   function render() {
     const { t, arrival } = state;
-    const ref = fpBaseGrid || baseGrid;    // free play compares against its own baseline
     let hit = 0, saved = 0;
     for (let i = 0; i < nB; i++) {
-      const cb = arrival[cells[i]], bb = ref[cells[i]];
+      const cb = arrival[cells[i]], bb = baseGrid[cells[i]];
       if (cb <= t) { states[i] = 1; hit++; }                    // burned — stays red
       else if (bb <= H && cb > H) {                             // saved by breaks
         states[i] = 2;
@@ -898,10 +878,11 @@ async function main() {
   }
 
   function updateReadout() {
-    const st = model.steps[state.step];
-    const mb = st.minutesBought == null ? '0' : Math.round(st.minutesBought);
+    const st = stepInfo(state.step);
+    const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
+    $('budget-value').textContent = fmtM2(state.budget);
     $('budget-readout').textContent =
-      `${fmtM2(state.budget)} · ${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ` +
+      `${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ${fmtMoney(st.cost)} spent · ` +
       `${st.saved.toLocaleString()} homes saved · ${mb} min bought`;
   }
 
@@ -910,19 +891,20 @@ async function main() {
     const s = stepForBudget(v);
     if (s !== state.step || force) {
       state.step = s;
-      state.arrival = gridForStep(s);
       rebuildBreakMask(s);
-      const st = model.steps[s];
-      chart.mark(st.cost, st.saved,
-        s > 0 ? `${fmtMoney(st.cost)} saves ${st.saved} homes`
-              : 'Move the budget slider.');
+      state.arrival = gridForStep(s);
+      const st = stepInfo(s);
+      const y = st.expected != null ? Math.round(st.expected) : st.saved;
+      chart.mark(st.cost, y,
+        s > 0 ? `${fmtMoney(st.cost)} saves ${y.toLocaleString()} homes${st.expected != null ? ' on average' : ''}`
+              : '$0 saves 0 homes — move the budget slider');
       render();
     }
     updateReadout();
     // first drag in the pick state reveals the replay button
     if (flow === 'pick' && state.budget > 0 && capBtn.hidden) {
       capBtn.hidden = false;
-      capBtn.textContent = 'Run it again';
+      capBtn.textContent = 'Run it again →';
     }
   }
 
@@ -931,7 +913,7 @@ async function main() {
   budgetEl.max = String(maxBudget);
   budgetEl.step = '10000';
   $('budget-ticks').innerHTML = [0, ...meta.budgets].map(v =>
-    `<span style="left:${(v / maxBudget) * 100}%">${fmtMoney(v)}</span>`).join('');
+    `<span style="left:${(v / maxBudget) * 100}%">${v ? fmtMoney(v) : ''}</span>`).join('');
   let budgetRaf = 0;
   budgetEl.oninput = () => {
     if (!budgetRaf) {
@@ -974,315 +956,10 @@ async function main() {
     }
   });
 
-  /* ---------------- free play: your own fire, wind and breaks ----------------
-     The model runs in a Web Worker (sim.js), proven cell-for-cell against
-     parity.json. Every change re-runs two sims: one without the drawn breaks to
-     get a fair baseline, one with them. */
-  const fp = {
-    on: false, ready: false, drawing: false, busy: false,
-    ignition: null, wind: null, breaks: [], cells: new Set(), fuel: null, queued: false,
-  };
-  let worker = null, runSeq = 0;
-
-  function fpSetHint(text) { $('fp-hint').textContent = text; }
-  function fpSetResult(text) { $('fp-result').textContent = text; }
-
-  function workerRun(breaksArr, wind, ignition) {
-    return new Promise((resolve, reject) => {
-      const id = ++runSeq;
-      const onMsg = ev => {
-        const m = ev.data;
-        if (m.type === 'result' && m.id === id) {
-          worker.removeEventListener('message', onMsg);
-          resolve(m);
-        } else if (m.type === 'error') {
-          worker.removeEventListener('message', onMsg);
-          reject(new Error(m.message));
-        }
-      };
-      worker.addEventListener('message', onMsg);
-      worker.postMessage({ type: 'run', id, ignition_rc: ignition, wind, breaks: breaksArr });
-    });
-  }
-
-  function bucketsToMinutes(buckets, bucketMin) {
-    const out = new Uint16Array(buckets.length);
-    for (let i = 0; i < buckets.length; i++) {
-      out[i] = buckets[i] === 255 ? UNREACHED : buckets[i] * bucketMin;
-    }
-    return out;
-  }
-
-  const COST_KEY = [null, 'grass', 'shrub', 'shrub', 'timber', 'timber', 'timber', null];
-  function breakCost(cellList) {
-    if (!fp.fuel || !fp.costPerAcre) return 0;
-    let acres = 0, total = 0;
-    for (const c of cellList) {
-      const key = COST_KEY[fp.fuel[c]];
-      if (!key) continue;
-      acres += fp.cellAcres;
-      total += fp.cellAcres * (fp.costPerAcre[key] || 0);
-    }
-    return Math.round(total);
-  }
-
-  async function fpRun() {
-    if (!fp.ready || fp.busy) { fp.queued = true; return; }
-    fp.busy = true;
-    try {
-      const all = [...fp.cells];
-      $('fp-sim').textContent = 'running';
-      const [bare, withBreaks] = await Promise.all([
-        workerRun([], fp.wind, fp.ignition),
-        all.length ? workerRun(all, fp.wind, fp.ignition) : null,
-      ].filter(Boolean));
-      const use = withBreaks || bare;
-      state.arrival = bucketsToMinutes(use.buckets, fp.bucketMin);
-      fpBaseGrid = bucketsToMinutes(bare.buckets, fp.bucketMin);
-      setMaskFromCells(all);
-      const lost = use.stats.homes_hit;
-      const saved = Math.max(0, bare.stats.homes_hit - lost);
-      const cost = breakCost(all);
-      fp.cost = cost;
-      fp.minutesBought = Math.max(0,
-        (use.stats.minutes_to_first_home || 0) - (bare.stats.minutes_to_first_home || 0));
-      state.t = H;
-      timeEl.value = String(H);
-      render();                       // after the numbers, so the panel shows them
-      $('fp-sim').textContent = `${Math.round(use.stats.sim_seconds * 1000)} ms`;
-      fpSetResult(all.length
-        ? `${saved.toLocaleString()} homes saved · ${fmtMoney(cost)} · ${lost.toLocaleString()} lost`
-        : `${lost.toLocaleString()} of ${nB.toLocaleString()} homes lost`);
-    } catch (err) {
-      $('fp-sim').textContent = 'failed';
-      fpSetResult(`Simulation failed. ${err.message}`);
-      console.error(err);
-    } finally {
-      fp.busy = false;
-      if (fp.queued) { fp.queued = false; fpRun(); }
-    }
-  }
-
-  function setWindDial(deg) {
-    fp.wind.from_deg = ((deg % 360) + 360) % 360;
-    $('wd-arrow').setAttribute('transform', `rotate(${fp.wind.from_deg} 32 32)`);
-    const dir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(fp.wind.from_deg / 45) % 8];
-    $('wind-read').textContent = `WIND ${dir} ${fp.wind.speed_mph} MPH`;
-  }
-
-  function latLngToCell(ll) {
-    const fyF = (yN - merc(ll.lat)) / (yN - yS);
-    const fxF = (ll.lng - b.west) / (b.east - b.west);
-    if (fxF < 0 || fxF >= 1 || fyF < 0 || fyF >= 1) return null;
-    return [Math.floor(fyF * rows), Math.floor(fxF * cols)];
-  }
-
-  /* A drawn line clears every cell whose centre is within one cell of it, which
-     is the two-cell width the solver uses. */
-  function addBreakLine(path) {
-    const added = [];
-    for (let s = 0; s < path.length - 1; s++) {
-      const a = path[s], c2 = path[s + 1];
-      const steps = Math.max(1, Math.ceil(Math.hypot(c2[0] - a[0], c2[1] - a[1]) * 2));
-      for (let k = 0; k <= steps; k++) {
-        const r = a[0] + (c2[0] - a[0]) * k / steps;
-        const c = a[1] + (c2[1] - a[1]) * k / steps;
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            const rr = Math.round(r) + dr, cc = Math.round(c) + dc;
-            if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
-            if (Math.hypot(rr - r, cc - c) > 1.0) continue;
-            const idx = rr * cols + cc;
-            if (!fp.cells.has(idx)) { fp.cells.add(idx); added.push(idx); }
-          }
-        }
-      }
-    }
-    if (added.length) fp.breaks.push(added);
-    return added.length;
-  }
-
-  function freePlayReady() {
-    if (fp.on) return;
-    fp.on = true;
-    $('freeplay').hidden = false;
-    if (!worker) startWorker();
-  }
-
-  function startWorker() {
-    try {
-      worker = new Worker('sim.js');
-    } catch (err) {
-      fpSetHint('Free play needs a local server.');
-      return;
-    }
-    worker.addEventListener('message', ev => {
-      const m = ev.data;
-      if (m.type === 'ready') {
-        fp.ready = true;
-        fp.bucketMin = m.bucket_min || 5;
-        fp.fuel = m.fuel;
-        fp.costPerAcre = m.cost_per_acre;
-        fp.cellAcres = m.cell_acres;
-        fp.ignition = m.ignition_rc.slice();
-        fp.wind = Object.assign({}, m.wind);
-        $('wind-speed').value = String(fp.wind.speed_mph);
-        setWindDial(fp.wind.from_deg);
-        fpRun();
-      } else if (m.type === 'error') {
-        $('fp-sim').textContent = 'failed';
-        fpSetResult(`Simulation failed. ${m.message}`);
-      }
-    });
-    worker.postMessage({ type: 'load', dataDir: DATA_DIR });
-  }
-
-  // map interaction: click sets the ignition, drag draws a break
-  let drawPath = null;
-  map.on('click', e => {
-    if (!fp.on || fp.drawing) return;
-    const rc = latLngToCell(e.latlng);
-    if (!rc) return;
-    fp.ignition = rc;
-    ignMarker.setLatLng(e.latlng);
-    fpSetHint('Draw a break, or click again to move the fire.');
-    fpRun();
-  });
-  map.on('mousedown', e => {
-    if (!fp.on || !fp.drawing) return;
-    const rc = latLngToCell(e.latlng);
-    if (!rc) return;
-    drawPath = [rc];
-    map.dragging.disable();
-  });
-  map.on('mousemove', e => {
-    if (!drawPath) return;
-    const rc = latLngToCell(e.latlng);
-    if (!rc) return;
-    const last = drawPath[drawPath.length - 1];
-    if (rc[0] !== last[0] || rc[1] !== last[1]) drawPath.push(rc);
-  });
-  map.on('mouseup', () => {
-    if (!drawPath) return;
-    const path = drawPath;
-    drawPath = null;
-    map.dragging.enable();
-    if (path.length < 2) return;
-    if (addBreakLine(path)) fpRun();
-  });
-
-  $('fp-draw').onclick = () => {
-    fp.drawing = !fp.drawing;
-    $('fp-draw').classList.toggle('on', fp.drawing);
-    document.body.classList.toggle('drawing', fp.drawing);
-    fpSetHint(fp.drawing ? 'Drag across the map to cut a break.' : 'Click the map to move the fire.');
-  };
-  $('fp-undo').onclick = () => {
-    const last = fp.breaks.pop();
-    if (!last) return;
-    last.forEach(c => fp.cells.delete(c));
-    fpRun();
-  };
-  $('fp-clear').onclick = () => {
-    fp.breaks = [];
-    fp.cells.clear();
-    fpRun();
-  };
-  $('wind-speed').oninput = () => {
-    if (!fp.wind) return;
-    fp.wind.speed_mph = Number($('wind-speed').value);
-    setWindDial(fp.wind.from_deg);
-    fpRun();
-  };
-  (() => {                       // drag the dial to set wind direction
-    const dial = $('wind-dial');
-    let dragging = false;
-    const angleFrom = ev => {
-      const r = dial.getBoundingClientRect();
-      const dx = ev.clientX - (r.left + r.width / 2);
-      const dy = ev.clientY - (r.top + r.height / 2);
-      return Math.round((Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360 / 5) * 5;
-    };
-    dial.addEventListener('mousedown', ev => { dragging = true; setWindDial(angleFrom(ev)); ev.preventDefault(); });
-    window.addEventListener('mousemove', ev => { if (dragging) setWindDial(angleFrom(ev)); });
-    window.addEventListener('mouseup', () => { if (dragging) { dragging = false; fpRun(); } });
-  })();
-
-  /* Region search. Needs serve.py: /api/health decides whether the box exists at
-     all, so a plain static server simply shows nothing rather than something broken.
-     Geocoding is Nominatim, which needs no key. */
-  const fpStatus = $('fp-status');
-  async function apiHealthy() {
-    try {
-      const r = await fetch('api/health', { signal: AbortSignal.timeout(4000) });
-      if (!r.ok) return false;
-      const j = await r.json();
-      return !!j.ok;
-    } catch (e) { return false; }
-  }
-  async function geocode(q) {
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='
-      + encodeURIComponent(q);
-    const r = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!r.ok) throw new Error(`Search failed (${r.status}).`);
-    const j = await r.json();
-    if (!j.length) throw new Error('No place found by that name.');
-    return { lat: +j[0].lat, lon: +j[0].lon, name: j[0].display_name.split(',').slice(0, 2).join(',') };
-  }
-  async function buildRegion(q) {
-    fpStatus.textContent = 'Looking up the place.';
-    const place = await geocode(q);
-    fpStatus.textContent = `Requesting ${place.name}.`;
-    const r = await fetch('api/region', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lat: place.lat, lon: place.lon, name: place.name }),
-    });
-    if (!r.ok) throw new Error(`Region build failed (${r.status}).`);
-    const job = await r.json();
-    if (job.status === 'ready') return job;
-    for (let i = 0; i < 300; i++) {                  // poll about once a second
-      await new Promise(res => setTimeout(res, 1000));
-      const s = await fetch(`api/region/${job.id}/status`);
-      if (!s.ok) throw new Error(`Status failed (${s.status}).`);
-      const st = await s.json();
-      if (st.status === 'ready') return st;
-      if (st.status === 'error') throw new Error(st.error || 'Region build failed.');
-      fpStatus.textContent = `${st.stage || 'Building'} ${st.pct != null ? st.pct + '%' : ''}`.trim();
-    }
-    throw new Error('Region build timed out.');
-  }
-  apiHealthy().then(ok => {
-    if (!ok) return;                                  // static server: no search box
-    $('fp-search').hidden = false;
-    const input = $('fp-place');
-    input.onkeydown = async ev => {
-      if (ev.key !== 'Enter' || !input.value.trim()) return;
-      const q = input.value.trim();
-      input.disabled = true;
-      try {
-        const done = await buildRegion(q);
-        fpStatus.textContent = 'Loading the region.';
-        goToTown(done.id);
-      } catch (err) {
-        fpStatus.textContent = err.message;
-        input.disabled = false;
-      }
-    };
-  });
-
-  // The one "i": everything that is not budget or homes saved lives behind it.
-  const infoModal = $('info-modal');
-  const openInfo = () => { infoModal.hidden = false; };
-  const closeInfo = () => { infoModal.hidden = true; };
-  $('info-open').onclick = openInfo;
-  $('info-close').onclick = closeInfo;
-  infoModal.onclick = e => { if (e.target === infoModal) closeInfo(); };
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeInfo(); });
-
   // Sound toggle — never throws; first click may lazily create the context.
   const soundEl = $('sound');
   const soundLabel = () =>
-    { soundEl.textContent = audio.isActive() && !audio.isMuted() ? 'SOUND ON' : 'SOUND OFF'; };
+    { soundEl.textContent = audio.isActive() && !audio.isMuted() ? 'Sound on' : 'Sound off'; };
   soundEl.onclick = () => {
     if (!audio.isActive()) audio.start(); else audio.toggleMute();
     soundLabel();
@@ -1298,9 +975,16 @@ async function main() {
     if (on && !map.hasLayer(ghost)) ghost.addTo(map);
     if (!on && ghost && map.hasLayer(ghost)) map.removeLayer(ghost);
   }
+  function dropGhost() {
+    if (ghost && map.hasLayer(ghost)) map.removeLayer(ghost);
+    ghost = null;
+  }
   const capEl = $('caption'), capText = $('caption-text'), capBtn = $('caption-btn');
   const arrowEl = $('point-arrow');
   const townName = meta.town.split(',')[0];
+  const openerLine = meta.town.startsWith('Paradise')
+    ? 'Paradise, California. 6:30 AM, November 8, 2018. The Camp Fire started here.'
+    : meta.story;
   function setCaption(text, btn) {
     capEl.hidden = !text;
     capText.textContent = text || '';
@@ -1314,107 +998,182 @@ async function main() {
       arrowEl.style.top = `${r.top + 26}px`;
     }
   }
-  function enterFreePlay() {
-    setCaption('Now start your own fire.', null);
-    if (typeof freePlayReady === 'function') freePlayReady();
-  }
   function setWalk(f) {
     flow = f;
     document.body.dataset.flow = f;
-    document.body.classList.toggle('crawl', f === 'crawl');
-    showGhost(f === 'burn1' || f === 'done');
+    showGhost(f === 'burn1' || f === 'done' || (f === 'scenario' && state.step > 0));
     pointAtBudget(f === 'pick');
-    skipEl.hidden = f === 'free';
-    skipEl.textContent = f === 'crawl' ? 'Skip intro' : 'Free play';
-    $('timeline').hidden = f === 'crawl';
-    audio.setWind(f === 'crawl');      // low wind bed under the opening only
-    if (f === 'burn0') {
-      setCaption('This is what happened.', null);
-      crawlTimers.push(setTimeout(() => {
-        if (flow === 'burn0') {
-          setCaption('Twelve hours of fire in twenty seconds. Each red square is a home.', null);
-        }
-      }, 2600));
-    }
+    if (f === 'armed') setCaption(openerLine, 'Watch it happen →');
+    if (f === 'burn0') setCaption('The fire spreads southwest with the wind — 12 hours in 20 seconds. Every red square is a home burning.', null);
     if (f === 'pick') setCaption(
       `${lastCounts.hit.toLocaleString()} of ${nB.toLocaleString()} homes gone. ` +
-      `What would a budget have bought?`, null);
-    if (f === 'burn1') setCaption('Same fire. The pale strips are cleared ground.', null);
+      `Now give ${townName} a budget for fuel breaks — drag the slider.`, null);
+    if (f === 'burn1') setCaption('Same fire. Your fuel breaks are the pale strips of cleared ground.', null);
+    if (f === 'scenario') setCaption(scenarioLine(), 'Run the fire →');
     if (f === 'done') {
-      const st = model.steps[state.step];
-      const mb = st.minutesBought == null ? 0 : Math.round(st.minutesBought);
+      const st = stepInfo(state.step);
+      const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
       setCaption(`${fmtMoney(st.cost)} · ${lastCounts.saved.toLocaleString()} homes saved · ` +
-        `${mb} min evacuation time.`, 'Try another budget');
+        `${mb} minutes of evacuation time bought.`, 'Try another budget');
     }
-    if (f === 'free') { setCaption(null, null); enterFreePlay(); }
+    if (f === 'free') setCaption(null, null);
     updateStats();
   }
   function onRunEnd() {
     if (flow === 'burn0') setWalk('pick');
     else if (flow === 'burn1') setWalk('done');
+    else if (flow === 'scenario') {
+      const st = stepInfo(state.step);
+      const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
+      setCaption(`${lastCounts.hit.toLocaleString()} of ${nB.toLocaleString()} homes hit. ` +
+        (state.step > 0 ? `The ${fmtMoney(st.cost)} plan saved ${lastCounts.saved.toLocaleString()} here and bought ${mb} minutes.`
+                        : 'Drag the budget slider to see what the breaks do to this fire.'), 'Run it again →');
+    }
   }
   capBtn.onclick = e => {
     e.stopPropagation();
-    if (flow === 'pick') { setWalk('burn1'); state.t = 0; timeEl.value = '0'; render(); startPlay(); }
-    else if (flow === 'done') {
-      setWalk('pick');
-      setCaption('Pick another budget, then run it again.', 'Run it again');
-    }
+    if (flow === 'scenario') { state.t = 0; timeEl.value = '0'; render(); startPlay(); return; }
+    if (flow === 'armed') { setWalk('burn0'); startPlay(); }
+    else if (flow === 'pick') { setWalk('burn1'); state.t = 0; timeEl.value = '0'; render(); startPlay(); }
+    else if (flow === 'done') { setWalk('pick'); setCaption(
+      `Drag the budget slider, then run it again.`, 'Run it again →'); }
   };
+  $('caption-skip').onclick = e => { e.stopPropagation(); setWalk('free'); };
 
-  /* The opening: black, the map fades in at state scale and flies to the town over
-     10 s while meta.crawl plays one line at a time, then the fire starts. */
-  const crawlEl = $('crawl'), crawlLine = $('crawl-line');
-  const crawlLines = (Array.isArray(meta.crawl) && meta.crawl.length)
-    ? meta.crawl.slice(0, 6)
-    : meta.story.split(/(?<=[.?])\s+/).filter(Boolean).slice(0, 4);
-  let crawlTimers = [];
-  function clearCrawl() {
-    crawlTimers.forEach(clearTimeout);
-    crawlTimers = [];
-    crawlEl.hidden = true;
-    crawlLine.classList.remove('on');
+  // --- what-if: click-to-ignite + wind sliders, simulated live via sim.js ---
+  const igniteBtn = $('ignite-btn'), resetBtn = $('scenario-reset');
+  const wsEl = $('wind-speed'), wdEl = $('wind-dir');
+  let picking = false;
+  function scenarioLine() {
+    const where = scenario && scenario.cell !== histIgnCell ? 'your ignition point' : meta.ignition.label.split(' (')[0];
+    return `A fire from ${where}, wind ${wind.speed_mph} mph from the ${compass(wind.from_deg)}. ` +
+      (planId === 'historical' ? 'Breaks are the ones bought for the historical fire at this budget.'
+                                : 'Breaks are the ones bought for any plausible fire at this budget.');
   }
-  function startBurn() {
-    clearCrawl();
-    setWalk('burn0');            // drops the crawl class, so the panel takes its space
-    map.invalidateSize();        // then reframe for the narrower map
-    map.setView(townCenter, map.getBoundsZoom(bounds, false, L.point(24, 24)), { animate: false });
+  const isHistWind = () => wind.speed_mph === meta.wind.speed_mph && wind.from_deg === meta.wind.from_deg;
+  function windLabels() {
+    $('wind-speed-label').textContent = `${wind.speed_mph} mph`;
+    $('wind-dir-label').textContent = `${wind.from_deg}° ${compass(wind.from_deg)}`;
+    $('basemap-status').textContent = statusBits();
+  }
+  function setPicking(on) {
+    picking = on;
+    document.body.classList.toggle('picking', on);
+    igniteBtn.textContent = on ? 'Click the map…' : 'Start a fire anywhere';
+  }
+  function applyScenario() {
+    if (timer) stopPlay();
+    sim.setWind(wind.speed_mph, wind.from_deg);
+    baseGrid = sim.toU16(sim.run(scenario.cell, null));
+    scenGrids = []; scenStats = [];
+    dropGhost();
+    const [r, c] = [Math.floor(scenario.cell / cols), scenario.cell % cols];
+    const lat = Math.atan(Math.sinh(yN - ((r + 0.5) / rows) * (yN - yS))) * 180 / Math.PI;
+    const lon = b.west + ((c + 0.5) / cols) * (b.east - b.west);
+    ignMarker.setLatLng(scenario.cell === histIgnCell ? [meta.ignition.lat, meta.ignition.lon] : [lat, lon]);
+    ignMarker.setIcon(ignIcon(scenario.cell === histIgnCell ? histIgnLabel : 'your ignition'));
+    $('scenario-value').textContent = scenario.cell === histIgnCell ? 'Historical ignition, your wind' : 'Your fire';
+    resetBtn.hidden = false;
+    windLabels();
     state.t = 0; timeEl.value = '0';
-    render();
-    startPlay();
+    setBudgetValue(state.budget, true);
+    setWalk('scenario');
   }
-  function runOpening() {
-    setWalk('crawl');
-    crawlEl.hidden = false;
-    crawlEl.classList.remove('clear');
-    map.invalidateSize();        // crawl runs full bleed
-    map.setView(townCenter, STATE_ZOOM, { animate: false });
-    const at = (ms, fn) => crawlTimers.push(setTimeout(fn, ms));
-    at(350, () => {
-      crawlEl.classList.add('clear');                       // map reveals behind
-      map.flyTo(townCenter, targetZoom, { duration: 10, easeLinearity: 0.25 });
+  function resetScenario() {
+    if (timer) stopPlay();
+    scenario = null; scenGrids = []; scenStats = [];
+    wind = { speed_mph: meta.wind.speed_mph, from_deg: meta.wind.from_deg };
+    wsEl.value = String(wind.speed_mph); wdEl.value = String(wind.from_deg);
+    baseGrid = histBase;
+    dropGhost();
+    ignMarker.setLatLng([meta.ignition.lat, meta.ignition.lon]);
+    ignMarker.setIcon(ignIcon(histIgnLabel));
+    $('scenario-value').textContent = 'Historical fire';
+    resetBtn.hidden = true;
+    setPicking(false);
+    windLabels();
+    state.t = 0; timeEl.value = '0';
+    setBudgetValue(state.budget, true);
+    setWalk('free');
+  }
+  // Nearest burnable cell within a few cells of (r, c), or -1 (water, bare rock).
+  function snapIgnition(r, c) {
+    for (let rad = 0; rad <= 6; rad++) {
+      for (let dr = -rad; dr <= rad; dr++) for (let dc = -rad; dc <= rad; dc++) {
+        if (Math.max(Math.abs(dr), Math.abs(dc)) !== rad) continue;
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+        if (sim.base[rr * cols + cc] > 0) return rr * cols + cc;
+      }
+    }
+    return -1;
+  }
+  if (sim) {
+    $('scenario-block').hidden = false;
+    wsEl.value = String(wind.speed_mph); wdEl.value = String(wind.from_deg);
+    windLabels();
+    igniteBtn.onclick = () => setPicking(!picking);
+    resetBtn.onclick = resetScenario;
+    map.on('click', e => {
+      if (!picking) return;
+      const fyF = (yN - merc(e.latlng.lat)) / (yN - yS);
+      const fxF = (e.latlng.lng - b.west) / (b.east - b.west);
+      if (fxF < 0 || fxF >= 1 || fyF < 0 || fyF >= 1) return;
+      const cell = snapIgnition(Math.floor(fyF * rows), Math.floor(fxF * cols));
+      if (cell < 0) { setCaption('Nothing to burn there — try a spot with fuel.', null); return; }
+      setPicking(false);
+      scenario = { cell, wind };
+      applyScenario();
     });
-    const HOLD = 2500, FADE = 700;
-    crawlLines.forEach((line, i) => {
-      at(600 + i * HOLD, () => {
-        crawlLine.textContent = line;
-        crawlLine.classList.add('on');
+    let windRaf = 0;
+    const onWind = () => {
+      wind = { speed_mph: Number(wsEl.value), from_deg: Number(wdEl.value) };
+      windLabels();
+      if (!scenario && isHistWind()) return;
+      if (!windRaf) windRaf = requestAnimationFrame(() => {
+        windRaf = 0;
+        if (!scenario) scenario = { cell: histIgnCell, wind };
+        scenario.wind = wind;
+        applyScenario();
       });
-      at(600 + i * HOLD + (HOLD - FADE), () => crawlLine.classList.remove('on'));
-    });
-    at(600 + crawlLines.length * HOLD, startBurn);
+    };
+    wsEl.oninput = onWind; wdEl.oninput = onWind;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && picking) setPicking(false); });
   }
-  skipEl.onclick = e => {
-    e.stopPropagation();
-    if (flow === 'crawl') startBurn();
-    else { clearCrawl(); setWalk('free'); }
-  };
 
-  // --- break hover: cell → active break → green highlight + mono tooltip ---
+  // --- plan toggle: robust (default) vs historical-only breaks ---
+  const savedByStep = () => model.steps.map((st, i) =>
+    i === 0 ? 0 : Math.round((model.expected ? model.expected[i] - model.expected[i - 1]
+                                             : st.saved - model.steps[i - 1].saved)));
+  let stepSaved = savedByStep();
+  function setPlan(id) {
+    if (!plans[id] || id === planId) return;
+    if (timer) stopPlay();
+    planId = id; model = plans[id];
+    braster = rasterizeBreaks(model.breaksFC, meta);
+    fire.setBreaks(breakMask, braster.cellBreak, breakEdge);
+    stepGrids.length = 0; scenGrids = []; scenStats = [];
+    chart = buildCurve(curvePoints());
+    stepSaved = savedByStep();
+    for (const btn of $('plan-toggle').children) {
+      btn.setAttribute('aria-selected', String(btn.dataset.plan === id));
+    }
+    $('plan-note').textContent = planNotes[id];
+    state.t = 0; timeEl.value = '0';
+    setBudgetValue(state.budget, true);
+    if (flow === 'done' || flow === 'burn1') {
+      setWalk('pick');
+      setCaption('Different breaks on the map now — run the fire again to see what they do.', 'Run it again →');
+    }
+  }
+  if (hasPlans && plans.historical) {
+    $('plan-block').hidden = false;
+    $('plan-note').textContent = planNotes[planId];
+    for (const btn of $('plan-toggle').children) btn.onclick = () => setPlan(btn.dataset.plan);
+  }
+
+  // --- break hover: cell → active break → green highlight + tooltip ---
   const tip = $('break-tip');
-  const savedByBreak = new Map(curve.points.map((p, i) =>
-    [p.break_id, p.cumulative_saved - (i > 0 ? curve.points[i - 1].cumulative_saved : 0)]));
   let hoverBi = -1;
   map.on('mousemove', e => {
     const fyF = (yN - merc(e.latlng.lat)) / (yN - yS);
@@ -1434,8 +1193,8 @@ async function main() {
     if (bi >= 0) {
       const bk = braster.breaks[bi];
       tip.textContent =
-        `BREAK ${bk.props.id} · STEP ${bk.step} · ${fmtMoney(bk.props.cost)} · ` +
-        `${savedByBreak.get(bk.props.id) ?? 0} HOMES PROTECTED`;
+        `Break ${bk.props.id} · #${bk.step} · ${fmtMoney(bk.props.cost)} · ` +
+        `+${stepSaved[bk.step] ?? '—'} homes${model.expected ? ' on average' : ''}`;
       tip.style.left = `${e.containerPoint.x + 14}px`;
       tip.style.top = `${e.containerPoint.y + 14}px`;
     }
@@ -1445,7 +1204,7 @@ async function main() {
     tip.hidden = true;
   });
 
-  // Title card. Clicking anywhere on it enters; that click is the audio gesture.
+  // Intro: full-bleed title card over the undimmed, still map. Click anywhere skips.
   let startedApp = false;
   function startApp(withAudio) {
     if (startedApp) return;
@@ -1456,69 +1215,19 @@ async function main() {
     intro.classList.add('gone');
     setTimeout(() => intro.remove(), 700);
     map.invalidateSize();
-    // story:false regions have no solver run and no crawl, so they open in free play
-    if (entry && entry.story === false) { setWalk('free'); state.t = H; render(); }
-    else runOpening();
+    map.fitBounds(bounds, { padding: [10, 10] });
+    setWalk('armed');   // walkthrough: fire waits for "Watch it happen →"
   }
   $('intro').addEventListener('click', () => startApp(true));
 
-  /* Test hook: where the grid canvas puts a home versus where Leaflet puts it.
-     Uses an interior home (edge homes are clamped so their ring stays on canvas).
-     Residual is bounded by half a grid pixel, which is what drawing homes as grid
-     pixels costs; it is fixed per home and does not grow or slide with zoom. */
-  const probeIdx = (() => {
-    let best = 0, bestD = Infinity;
-    for (let i = 0; i < nB; i++) {
-      const r = (cells[i] / cols) | 0, c = cells[i] % cols;
-      const d = Math.abs(r - rows / 2) + Math.abs(c - cols / 2);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    return best;
-  })();
-  window._fb.breakCells = () => [...fp.cells];
-  window._fb.homeProbe = () => {
-    const cv = document.querySelector('.fire-canvas');
-    if (!cv || !nB) return null;
-    const r = cv.getBoundingClientRect();
-    const mr = $('map').getBoundingClientRect();
-    const [lon, lat] = feats[probeIdx].geometry.coordinates;
-    const cx = r.left + ((hx[probeIdx] + 1) / (cols * 2)) * r.width;
-    const cy = r.top + ((hy[probeIdx] + 1) / (rows * 2)) * r.height;
-    const pt = map.latLngToContainerPoint([lat, lon]);
-    const gridPx = r.height / (rows * 2);
-    return {
-      dx: +(cx - (mr.left + pt.x)).toFixed(2), dy: +(cy - (mr.top + pt.y)).toFixed(2),
-      gridPx: +gridPx.toFixed(2),
-    };
-  };
-
+  setWalk('armed');
   setBudgetValue(0, true);
   soundLabel();
-  if (SKIP_INTRO) { document.body.classList.remove('intro'); $('intro').remove(); startBurn(); }
+  if (SKIP_INTRO) startApp(false);
 }
-
-/* Title-card heat haze: drift the turbulence seed and baseFrequency so the red
-   copy behind the white word waves. Slow, no flicker, stops once the card is gone. */
-function animateHeat() {
-  const turb = $('heat-turb');
-  if (!turb) return;
-  const intro = $('intro');
-  let t = 0;
-  const tick = () => {
-    if (!intro.isConnected || intro.classList.contains('gone')) return;
-    t += 1;
-    turb.setAttribute('seed', String(2 + ((t / 7) | 0) % 64));
-    const fx = 0.011 + Math.sin(t / 95) * 0.0035;
-    const fy = 0.026 + Math.cos(t / 71) * 0.008;
-    turb.setAttribute('baseFrequency', `${fx.toFixed(5)} ${fy.toFixed(5)}`);
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-}
-animateHeat();
 
 main().catch(err => {
-  $('story').textContent = `Could not load web/${DATA_DIR}. ${err.message}`;
+  $('story').textContent = `FAILED to load web/${DATA_DIR}/ — ${err.message}`;
   const ir = $('intro-run');
   if (ir) ir.textContent = `FAILED: ${err.message}`;
   console.error(err);

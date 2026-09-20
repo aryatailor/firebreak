@@ -23,12 +23,11 @@ import math
 import sys
 import time
 
+import common
 import numpy as np
+import ros
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
-
-import common
-import ros
 
 
 class Simulator:
@@ -74,7 +73,8 @@ class Simulator:
         return int(rr[k]), int(cc[k])
 
     def arrival(self, params: dict, break_mask: np.ndarray | None = None,
-                wind: dict | None = None) -> np.ndarray:
+                wind: dict | None = None,
+                ignition: tuple[int, int] | None = None) -> np.ndarray:
         """Minutes from ignition to every cell (float, inf = unreachable).
         wind overrides the town's historical wind (sensitivity runs only)."""
         t0 = time.perf_counter()
@@ -95,7 +95,8 @@ class Simulator:
         g = csr_matrix((np.concatenate(t_parts),
                         (np.concatenate(i_parts), np.concatenate(j_parts))),
                        shape=(n, n))
-        src = self.ignition[0] * self.cols + self.ignition[1]
+        source = self.ignition if ignition is None else ignition
+        src = source[0] * self.cols + source[1]
         dist = dijkstra(g, directed=True, indices=src)
         self.last_sim_s = time.perf_counter() - t0
         return dist.reshape(self.rows, self.cols)
