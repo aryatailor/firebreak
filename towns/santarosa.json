@@ -10,5 +10,5 @@
   "fuel_layer": "LF2016_FBFM40",
   "web_dir": "towns/santarosa",
   "horizon_min": 720,
-  "budgets": [500000, 1000000, 2000000, 3000000, 5000000]
+  "budgets": [500000, 1000000, 2000000, 3000000]
 }
