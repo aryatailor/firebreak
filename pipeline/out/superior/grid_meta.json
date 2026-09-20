@@ -1,0 +1,55 @@
+{
+  "town": "superior",
+  "name": "Superior\u2013Louisville, CO",
+  "rows": 186,
+  "cols": 256,
+  "cell_m": 60.0,
+  "cell_merc": 78.27860067472712,
+  "bounds": {
+    "west": -105.27,
+    "north": 40.01,
+    "east": -105.08998370968168,
+    "south": 39.9097478602057
+  },
+  "bounds_3857": {
+    "west_m": -11718602.79580791,
+    "north_m": 4867395.5586771555,
+    "east_m": -11698563.47403518,
+    "south_m": 4852835.738951656
+  },
+  "fuel": {
+    "product": "LANDFIRE LF2016_FBFM40 (pre-fire vintage)",
+    "check": {
+      "woody_frac": 0.1243,
+      "grass_barren_frac": 0.5895,
+      "corridor_cells": 16683,
+      "looks_prefire": false,
+      "note": "absolute check - no LF2014 layer on the live LFPS to compare"
+    }
+  },
+  "terrain": "LANDFIRE LF2020_Elev",
+  "buildings": {
+    "source": "proxy: developed-land cells scaled to pre-fire home count",
+    "count": 14000,
+    "proxy": true,
+    "urban_cells": 15147,
+    "simplification": "Homes are estimated from developed-land cells at pre-fire density (Superior ~5,000 and Louisville ~9,000 housing units), not individual footprints."
+  },
+  "fuel_group_cells": {
+    "grass": 21270,
+    "grass_shrub": 2110,
+    "shrub": 688,
+    "timber_understory": 1841,
+    "timber_litter": 3715,
+    "slash": 0,
+    "urban": 15147,
+    "snow": 0,
+    "agriculture": 1816,
+    "water": 939,
+    "barren": 90
+  },
+  "unknown_fuel_frac": 0.0,
+  "elev_nodata_frac": 0.0,
+  "fetched": "2026-09-20",
+  "generated": "2026-09-20T07:50:32"
+}

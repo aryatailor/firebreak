@@ -1,0 +1,14 @@
+{
+  "name": "Santa Rosa, CA",
+  "story": "Santa Rosa, California. 9:43 PM, October 8, 2017. The Tubbs Fire started near Calistoga and reached Coffey Park in three hours.",
+  "bounds": {"west": -122.78, "south": 38.43, "east": -122.55, "north": 38.63},
+  "ignition": {"lat": 38.609, "lon": -122.603, "label": "Tubbs Lane, Calistoga · 9:43 PM"},
+  "wind": {"speed_mph": 45, "from_deg": 45},
+  "town_center": {"lat": 38.482, "lon": -122.720},
+  "homes_estimate": 30000,
+  "homes_note": "Homes are estimated from developed-land cells at pre-fire density (northern Santa Rosa, Fountaingrove, Larkfield-Wikiup and Coffey Park), not individual footprints.",
+  "fuel_layer": "LF2016_FBFM40",
+  "web_dir": "towns/santarosa",
+  "horizon_min": 720,
+  "budgets": [500000, 1000000, 2000000, 3000000, 5000000]
+}
