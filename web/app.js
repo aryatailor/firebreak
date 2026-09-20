@@ -43,12 +43,15 @@ const RAMP = (() => {
   return lut;
 })();
 
-const fmtMoney = n =>
-  n >= 1e6 ? `$${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}k` : `$${n}`;
+const fmtMoney = n =>       // 999500+ takes the M branch so nothing prints "$1000k"
+  n >= 999500 ? `$${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}k` : `$${n}`;
 const fmtTime = m => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 
 /* Fire canvas layer: one pixel per grid cell, stretched over meta.bounds
-   (image-rendering: pixelated keeps cells crisp). Positioning mirrors L.ImageOverlay. */
+   (image-rendering: pixelated keeps cells crisp). Positioning mirrors L.ImageOverlay.
+   A second, smooth-scaled canvas carries a blurred glow on cells ignited within the
+   last GLOW_SPAN minutes of the current t. */
+const GLOW_SPAN = 30;
 const FireLayer = L.Layer.extend({
   initialize(bounds, rows, cols, opts) {
     L.setOptions(this, opts);
@@ -56,13 +59,20 @@ const FireLayer = L.Layer.extend({
   },
   onAdd() {
     const c = this._canvas = L.DomUtil.create('canvas', 'fire-canvas leaflet-zoom-animated');
-    c.width = this._cols; c.height = this._rows;
+    const g = this._glow = L.DomUtil.create('canvas', 'glow-canvas leaflet-zoom-animated');
+    c.width = g.width = this._cols; c.height = g.height = this._rows;
     this._ctx = c.getContext('2d');
+    this._gctx = g.getContext('2d');
+    this._off = document.createElement('canvas');       // unblurred glow cells
+    this._off.width = this._cols; this._off.height = this._rows;
+    this._octx = this._off.getContext('2d');
     this._img = this._ctx.createImageData(this._cols, this._rows);
+    this._gimg = this._octx.createImageData(this._cols, this._rows);
     this.getPane().appendChild(c);
+    this.getPane().appendChild(g);                      // glow above the cells
     this._reset();
   },
-  onRemove() { this._canvas.remove(); },
+  onRemove() { this._canvas.remove(); this._glow.remove(); },
   getEvents() {
     const ev = { zoom: this._reset, viewreset: this._reset };
     if (this._zoomAnimated) ev.zoomanim = this._animateZoom;
@@ -71,24 +81,39 @@ const FireLayer = L.Layer.extend({
   _reset() {
     const nw = this._map.latLngToLayerPoint(this._b.getNorthWest());
     const se = this._map.latLngToLayerPoint(this._b.getSouthEast());
-    L.DomUtil.setPosition(this._canvas, nw);
-    this._canvas.style.width = `${se.x - nw.x}px`;
-    this._canvas.style.height = `${se.y - nw.y}px`;
+    for (const el of [this._canvas, this._glow]) {
+      L.DomUtil.setPosition(el, nw);
+      el.style.width = `${se.x - nw.x}px`;
+      el.style.height = `${se.y - nw.y}px`;
+    }
   },
   _animateZoom(e) {
     const nb = this._map._latLngBoundsToNewLayerBounds(this._b, e.zoom, e.center);
-    L.DomUtil.setTransform(this._canvas, nb.min, this._map.getZoomScale(e.zoom));
+    const scale = this._map.getZoomScale(e.zoom);
+    L.DomUtil.setTransform(this._canvas, nb.min, scale);
+    L.DomUtil.setTransform(this._glow, nb.min, scale);
   },
   draw(arrival, t) {
-    const d = this._img.data;
+    const d = this._img.data, gd = this._gimg.data;
     for (let i = 0; i < arrival.length; i++) {
       const a = arrival[i], o = i * 4;
-      if (a > t) { d[o + 3] = 0; continue; }      // unburned (incl. 65535 = never)
-      const k = Math.min(t - a, RAMP_SPAN) * 3;
+      if (a > t) { d[o + 3] = 0; gd[o + 3] = 0; continue; }  // unburned (incl. 65535)
+      const age = t - a;
+      const k = Math.min(age, RAMP_SPAN) * 3;
       d[o] = RAMP[k]; d[o + 1] = RAMP[k + 1]; d[o + 2] = RAMP[k + 2];
       d[o + 3] = 191;                             // 0.75 alpha (DESIGN.md)
+      if (age <= GLOW_SPAN) {                     // fresh ignition: amber-white glow
+        gd[o] = 255; gd[o + 1] = 226; gd[o + 2] = 150;
+        gd[o + 3] = 220 - Math.round((220 * age) / GLOW_SPAN);
+      } else gd[o + 3] = 0;
     }
     this._ctx.putImageData(this._img, 0, 0);
+    this._octx.putImageData(this._gimg, 0, 0);
+    const g = this._gctx;
+    g.clearRect(0, 0, this._cols, this._rows);
+    g.filter = 'blur(1.5px)';
+    g.drawImage(this._off, 0, 0);
+    g.filter = 'none';
   },
 });
 
@@ -109,7 +134,8 @@ const DotsLayer = L.Layer.extend({
   },
   onRemove() { this._canvas.remove(); },
   getEvents() {
-    const ev = { moveend: this._reset, viewreset: this._reset, resize: this._reset };
+    // 'zoom' is required: pinch-zoom fires per-frame 'zoom' with no zoomanim.
+    const ev = { zoom: this._reset, moveend: this._reset, viewreset: this._reset, resize: this._reset };
     if (this._zoomAnimated) ev.zoomanim = this._animateZoom;
     return ev;
   },
@@ -147,25 +173,27 @@ const DotsLayer = L.Layer.extend({
   },
 });
 
-/* Basemap: the offline PNG is the safe default; satellite tiles are the upgrade if a
-   probe tile loads within 3 s (DESIGN.md). Any later tileerror falls back to the PNG. */
+/* Basemap: satellite tiles with the hillshade/fuel PNG blended over at 35% for
+   relief. The page renders offline-first — the PNG starts at full opacity, so
+   nothing waits on the network — and steps back to 35% only after a probe tile AND
+   a full tile-layer load succeed (usually < 3 s; a slow first handshake just
+   upgrades late). A failed probe means no tiles ever; any tileerror returns the
+   PNG to full strength until tiles complete a clean load again. */
+const BLEND_OPACITY = 0.35;
 function setupBasemap(map, bounds, onMode) {
-  const png = L.imageOverlay(`${DATA_DIR}/basemap.png`, bounds).addTo(map);
+  const png = L.imageOverlay(`${DATA_DIR}/basemap.png`, bounds, { opacity: 1 }).addTo(map);
   onMode('offline basemap');
   if (FORCE_OFFLINE) { onMode('offline basemap (forced)'); return; }
-  let settled = false;
-  const timer = setTimeout(() => { settled = true; }, 3000);
   const probe = new Image();
-  probe.onerror = () => { settled = true; };
   probe.onload = () => {
-    if (settled) return;
-    settled = true; clearTimeout(timer);
     const tiles = L.tileLayer(TILE_URL, { maxZoom: 17, attribution: 'Imagery © Esri' }).addTo(map);
+    // Leaflet fires 'load' when a batch settles even if every tile errored, so a
+    // clean-batch flag is needed or 'load' would undo the tileerror fallback.
+    let errored = false;
+    tiles.on('loading', () => { errored = false; });
+    tiles.on('tileerror', () => { errored = true; png.setOpacity(1); onMode('offline basemap (tiles failed)'); });
     tiles.on('load', () => {
-      if (map.hasLayer(png)) { map.removeLayer(png); onMode('satellite (online)'); }
-    });
-    tiles.on('tileerror', () => {
-      if (!map.hasLayer(png)) { png.addTo(map); onMode('offline basemap (tiles failed)'); }
+      if (!errored) { png.setOpacity(BLEND_OPACITY); onMode('satellite + hillshade (online)'); }
     });
   };
   probe.src = TILE_URL.replace('{z}', 0).replace('{y}', 0).replace('{x}', 0) + `?probe=${Date.now()}`;
@@ -331,7 +359,7 @@ async function main() {
   }
   playEl.onclick = () => (timer ? stopPlay() : startPlay());
   document.addEventListener('keydown', e => {
-    if (e.code === 'Space' && !/^(BUTTON|INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) {
+    if (e.code === 'Space' && !/^(BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(e.target.tagName)) {
       e.preventDefault(); playEl.click();
     }
   });

@@ -79,7 +79,8 @@ footer { margin-top: auto; display: flex; justify-content: space-between; gap: 8
 .chip i { width: 9px; height: 9px; border-radius: 2px; }
 
 .fire-canvas { image-rendering: pixelated; }
-.fire-canvas, .dots-canvas { pointer-events: none; }
+.glow-canvas { mix-blend-mode: screen; }   /* smooth-scaled on purpose — soft halo */
+.fire-canvas, .glow-canvas, .dots-canvas { pointer-events: none; }
 
 /* dark-friendly Leaflet chrome */
 .leaflet-container { background: #0a0c10; }
