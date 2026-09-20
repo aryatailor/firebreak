@@ -9,6 +9,31 @@ the plan — conservative option taken, reason logged).
 Status: **awaiting Zach's approval — no pipeline code until then.**
 Decisions most likely to change are first; boring mechanics at the bottom.
 
+### 0. Town config (`--town`) — new requirement, 2026-09-19
+
+- Everything town-specific lives in `towns/<town>.json`; pipeline code contains
+  nothing about Paradise. `towns/paradise.json`:
+
+  ```jsonc
+  { "name": "Paradise, CA",
+    "story": "<one line for meta.story>",
+    "bounds": {"west": -121.70, "south": 39.68, "east": -121.38, "north": 39.86},
+    "ignition": {"lat": 39.794, "lon": -121.435, "label": "Pulga (Camp Fire origin)"},
+    "wind": {"speed_mph": 35, "from_deg": 45},
+    "town_center": {"lat": 39.7596, "lon": -121.6219},
+    "horizon_min": 720,
+    "budgets": [500000, 1000000, 2000000, 3000000, 5000000] }
+  ```
+
+- Every stage takes `--town paradise` (the default). Per-town paths: raw downloads
+  `data_raw/<town>/`, intermediates + calibrated params `pipeline/out/<town>/`
+  (including `config.json`); `run_log.md` entries are tagged with the town. Export
+  writes `web/data/` from whichever town is named — a second real town Sunday
+  morning is: write `towns/<newtown>.json`, `python pipeline/run_all.py --town
+  <newtown>`, done.
+- Grid rows × cols are derived from the config bbox at build_grid time (the
+  334 × 456 in §1 is what the Paradise bbox produces, not a constant).
+
 ### 1. Box and grid (the numbers everything else inherits)
 
 - Bounds (EPSG:4326): west −121.70, south 39.68, east −121.38, north 39.86 — Pulga in
@@ -94,7 +119,7 @@ one calibrated global scale is the honest 24-hour version):
 
 - Sweep `scale` × `k_w`, print a table of (minutes to town center, % buildings hit at
   720 min). Auto-pick defaults hitting **60–90% of buildings within 2–4 h**; write
-  them to `pipeline/config.json` (read by every later stage). (The real fire reached
+  them to `pipeline/out/<town>/config.json` (read by every later stage). (The real fire reached
   Paradise in ~90 min; we accept 2–4 h as "same story, softer physics".)
 - **Gate**: place one hand-made ring break around the town's NE edge and assert
   buildings hit drops ≥ 30%. If it doesn't, STOP and tell Zach — the solver is
@@ -144,7 +169,8 @@ more than it buys.
 
 ### 10. Boring mechanics
 
-- **fetch_data.py**: `Landfire(bbox="-121.70 39.68 -121.38 39.86")` (native Albers
+- **fetch_data.py**: `Landfire(bbox=<from towns/<town>.json>)` — for Paradise
+  `"-121.70 39.68 -121.38 39.86"` (native Albers
   output — server-side reprojection of categorical rasters is someone else's
   resampler; we do it ourselves), `request_data(layers=["200F40_19","140FBFM40",
   "ELEV2020"], output_path=data_raw/landfire.zip)`. Run inside a
@@ -171,6 +197,19 @@ more than it buys.
   specified; Overpass flaky → mirrors/cache/proxy; sim too slow → downsample lever;
   data > 5 MB → coordinate quantization lever; Remap fuels post-fire → LF 2014
   fallback (§2).
+
+### 11. Process discipline (every stage, once approved)
+
+- Fail loud: a stage's top-level try/except exists only to print stage name + inputs
+  + exception, append to `pipeline/run_log.md`, and re-raise. The only sanctioned
+  fallbacks are the ones specified above (LANDFIRE→WorldCover+CopDEM, OSM→proxy
+  buildings), and each records itself in `meta.data`.
+- Every stage ends by printing a verification command Zach can run himself
+  (open alignment_check.png / solver_check.png, a `--check` invocation, etc.).
+- Commit + push after every completed stage. Files always written complete — never
+  patched as diffs.
+- Anything architecture-changing (schema, grid, model shape) → stop and ask first.
+- Plan / Decisions / Deviations in this file stay current as the build runs.
 
 **STOP — approval needed on: grid (§1), fuel vintage rule (§2), ROS numbers (§3),
 solver shape (§7), schema freeze (§8). Everything else is mechanics.**
