@@ -149,13 +149,32 @@ input[type=range]::-moz-range-thumb {
 /* walkthrough dimming: controls not for the current state are dimmed, not hidden.
    Budget lights up only when picking (or done / free play); everything secondary
    stays dimmed until free play. */
-body:not([data-flow="pick"]):not([data-flow="done"]):not([data-flow="free"]) #budget-block {
+body:not([data-flow="pick"]):not([data-flow="done"]):not([data-flow="free"]):not([data-flow="scenario"]) #budget-block {
   opacity: .35; pointer-events: none;
 }
-body:not([data-flow="free"]) #time-block,
-body:not([data-flow="free"]) #explore {
+body:not([data-flow="free"]):not([data-flow="scenario"]) #time-block,
+body:not([data-flow="free"]):not([data-flow="scenario"]) #explore,
+body:not([data-flow="done"]):not([data-flow="free"]):not([data-flow="scenario"]) #scenario-block {
   opacity: .35; pointer-events: none;
 }
+
+/* what-if: ignite anywhere + wind */
+#scenario-block[hidden] { display: none; }
+.scenario-row { display: flex; gap: 8px; margin-top: 10px; }
+#ignite-btn, #scenario-reset {
+  padding: 8px 12px; cursor: pointer; background: none; border-radius: 2px;
+  font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+}
+#ignite-btn { flex: 1; border: 1px solid var(--fire); color: var(--fire); }
+#ignite-btn:hover, body.picking #ignite-btn { background: rgba(255, 122, 26, .12); }
+#scenario-reset { border: 1px solid var(--line); color: var(--muted); }
+#scenario-reset:hover { color: var(--ink); border-color: var(--muted); }
+#scenario-reset[hidden] { display: none; }
+.control-head.sub { margin-top: 10px; font-size: 10px; }
+#wind-speed, #wind-dir { margin: 6px 0 0; }
+#scenario-note { margin: 10px 0 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
+body.picking #map { cursor: crosshair; }
+body.picking .leaflet-grab, body.picking .leaflet-interactive { cursor: crosshair; }
 
 /* curve (inline SVG): 1 px line, dotted grid, no fill */
 #curve { width: 100%; height: auto; display: block; margin-top: 8px; }

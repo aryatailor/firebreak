@@ -629,9 +629,11 @@ async function main() {
   }
 
   const meta = await loadJSON('meta.json');
-  const [baseline, curve, buildingsFC, legend, model] = await Promise.all([
+  const [baseline, curve, buildingsFC, legend, model, physics] = await Promise.all([
     loadJSON('baseline.json'), loadJSON('curve.json'),
     loadJSON('buildings.geojson'), loadJSON('fuel_legend.json'), loadModel(),
+    // physics.json is optional: without it there is no what-if mode.
+    loadJSON('physics.json').catch(err => { console.warn(`no physics.json (${err.message})`); return null; }),
   ]);
   const { rows, cols } = meta.grid, b = meta.bounds;
   const bounds = L.latLngBounds([b.south, b.west], [b.north, b.east]);
@@ -648,13 +650,16 @@ async function main() {
   map.createPane('fire').style.zIndex = 405;
   window._fb = { map };   // debug/test handle
 
-  const windDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(meta.wind.from_deg / 45) % 8];
-  const statusBits = mode => [
-    mode, `DATA: ${DATA_DIR.toUpperCase()}`, `${meta.grid.cell_m} M CELLS`,
-    `WIND ${windDir} ${meta.wind.speed_mph} MPH`,
+  const compass = deg => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+  let wind = { speed_mph: meta.wind.speed_mph, from_deg: meta.wind.from_deg };
+  let basemapMode = '…';
+  const statusBits = () => [
+    basemapMode, `DATA: ${DATA_DIR.toUpperCase()}`, `${meta.grid.cell_m} M CELLS`,
+    `WIND ${compass(wind.from_deg)} ${wind.speed_mph} MPH`,
   ].join(' · ');
   setupBasemap(map, bounds, mode => {
-    $('basemap-status').textContent = statusBits(mode);
+    basemapMode = mode;
+    $('basemap-status').textContent = statusBits();
     $('legend').hidden = !mode.startsWith('OFFLINE');
   });
 
@@ -679,12 +684,13 @@ async function main() {
   fire.setHomes(hx, hy, states);
   // 6:30 AM is the Camp Fire's ignition time — Paradise-only until meta grows a field.
   const ignTime = meta.town.startsWith('Paradise') ? ' · 6:30 AM' : '';
-  L.marker([meta.ignition.lat, meta.ignition.lon], {
-    interactive: false, keyboard: false,
-    icon: L.divIcon({
-      className: 'ign', iconSize: [0, 0],
-      html: `<span class="ign-dot"></span><span class="ign-label">${meta.ignition.label.split(' (')[0]}${ignTime}</span>`,
-    }),
+  const histIgnLabel = `${meta.ignition.label.split(' (')[0]}${ignTime}`;
+  const ignIcon = label => L.divIcon({
+    className: 'ign', iconSize: [0, 0],
+    html: `<span class="ign-dot"></span><span class="ign-label">${label}</span>`,
+  });
+  const ignMarker = L.marker([meta.ignition.lat, meta.ignition.lon], {
+    interactive: false, keyboard: false, icon: ignIcon(histIgnLabel),
   }).addTo(map);
 
   // Breaks → cells; mask marks active break cells, edge bits their outward rim.
@@ -713,15 +719,46 @@ async function main() {
 
   // Grids: step 0 = baseline (uint16 from baseline.json); later steps decode their
   // uint8 bucket grids — or uint16 grids in the snap-budget fallback — on demand.
-  const baseGrid = decodeGrid(baseline.arrival_min_b64, rows, cols);
+  const histBase = decodeGrid(baseline.arrival_min_b64, rows, cols);
+  let baseGrid = histBase;
   const stepGrids = [];
+  // What-if scenario: user-placed ignition and/or wind, simulated in the browser
+  // (sim.js) against the shipped breaks. null = the historical, precomputed run.
+  const sim = physics && window.FireSim ? new FireSim(physics) : null;
+  let scenario = null;            // { cell, wind: {speed_mph, from_deg} }
+  let scenGrids = [], scenStats = [];
+  const firstHomeMin = grid => {
+    let first = Infinity;
+    for (let i = 0; i < nB; i++) { const a = grid[cells[i]]; if (a <= H && a < first) first = a; }
+    return first;
+  };
   const gridForStep = s => {
+    if (scenario) {
+      if (s === 0) return baseGrid;
+      if (scenGrids[s]) return scenGrids[s];
+      const g = scenGrids[s] = sim.toU16(sim.run(scenario.cell, breakMask));
+      let saved = 0;
+      for (let i = 0; i < nB; i++) {
+        const bb = baseGrid[cells[i]], cb = g[cells[i]];
+        if (bb <= H && cb > H) saved++;
+      }
+      const f0 = firstHomeMin(baseGrid), f1 = firstHomeMin(g);
+      scenStats[s] = { saved, minutesBought: f0 === Infinity ? null : Math.min(f1, H) - f0 };
+      return g;
+    }
     if (s === 0) return baseGrid;
     if (stepGrids[s]) return stepGrids[s];
     const st = model.steps[s];
     return (stepGrids[s] = st.b64u8
       ? decodeStepGrid(st.b64u8, rows, cols, 5, 255)
       : decodeGrid(st.b64u16, rows, cols));
+  };
+  // Per-step numbers: the solver's (historical run) or the live scenario's.
+  const stepInfo = s => {
+    const st = model.steps[s];
+    if (!scenario) return st;
+    const sc = s === 0 ? { saved: 0, minutesBought: 0 } : scenStats[s];
+    return { cost: st.cost, breakCount: st.breakCount, saved: sc.saved, minutesBought: sc.minutesBought };
   };
   const stepForBudget = v => {
     let s = 0;
@@ -741,7 +778,7 @@ async function main() {
 
   const fmtInt = n => n.toLocaleString();
   function updateStats() {
-    const st = model.steps[state.step];
+    const st = stepInfo(state.step);
     setNum($('stat-saved'), lastCounts.saved, fmtInt);
     const mb = st.minutesBought == null ? '—' : `+${Math.round(st.minutesBought)}`;
     $('stat-line').textContent = `SPENT ${fmtMoney(st.cost)} · ${mb} MIN EVACUATION`;
@@ -768,7 +805,7 @@ async function main() {
   }
 
   function updateReadout() {
-    const st = model.steps[state.step];
+    const st = stepInfo(state.step);
     const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
     $('budget-readout').textContent =
       `${fmtM2(state.budget)} · ${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ` +
@@ -780,9 +817,9 @@ async function main() {
     const s = stepForBudget(v);
     if (s !== state.step || force) {
       state.step = s;
-      state.arrival = gridForStep(s);
       rebuildBreakMask(s);
-      const st = model.steps[s];
+      state.arrival = gridForStep(s);
+      const st = stepInfo(s);
       chart.mark(st.cost, st.saved,
         s > 0 ? `${fmtMoney(st.cost)} saves ${st.saved} homes`
               : '$0 saves 0 homes — move the budget slider');
@@ -863,6 +900,10 @@ async function main() {
     if (on && !map.hasLayer(ghost)) ghost.addTo(map);
     if (!on && ghost && map.hasLayer(ghost)) map.removeLayer(ghost);
   }
+  function dropGhost() {
+    if (ghost && map.hasLayer(ghost)) map.removeLayer(ghost);
+    ghost = null;
+  }
   const capEl = $('caption'), capText = $('caption-text'), capBtn = $('caption-btn');
   const arrowEl = $('point-arrow');
   const townName = meta.town.split(',')[0];
@@ -885,7 +926,7 @@ async function main() {
   function setWalk(f) {
     flow = f;
     document.body.dataset.flow = f;
-    showGhost(f === 'burn1' || f === 'done');
+    showGhost(f === 'burn1' || f === 'done' || (f === 'scenario' && state.step > 0));
     pointAtBudget(f === 'pick');
     if (f === 'armed') setCaption(openerLine, 'Watch it happen →');
     if (f === 'burn0') setCaption('The fire spreads southwest with the wind — 12 hours in 20 seconds. Every red square is a home burning.', null);
@@ -893,8 +934,9 @@ async function main() {
       `${lastCounts.hit.toLocaleString()} of ${nB.toLocaleString()} homes gone. ` +
       `Now give ${townName} a budget for fuel breaks — drag the slider.`, null);
     if (f === 'burn1') setCaption('Same fire. Your fuel breaks are the pale strips of cleared ground.', null);
+    if (f === 'scenario') setCaption(scenarioLine(), 'Run the fire →');
     if (f === 'done') {
-      const st = model.steps[state.step];
+      const st = stepInfo(state.step);
       const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
       setCaption(`${fmtMoney(st.cost)} · ${lastCounts.saved.toLocaleString()} homes saved · ` +
         `${mb} minutes of evacuation time bought.`, 'Try another budget');
@@ -905,15 +947,124 @@ async function main() {
   function onRunEnd() {
     if (flow === 'burn0') setWalk('pick');
     else if (flow === 'burn1') setWalk('done');
+    else if (flow === 'scenario') {
+      const st = stepInfo(state.step);
+      const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
+      setCaption(`${lastCounts.hit.toLocaleString()} of ${nB.toLocaleString()} homes hit. ` +
+        (state.step > 0 ? `The ${fmtMoney(st.cost)} plan saved ${lastCounts.saved.toLocaleString()} here and bought ${mb} minutes.`
+                        : 'Drag the budget slider to see what the breaks do to this fire.'), 'Run it again →');
+    }
   }
   capBtn.onclick = e => {
     e.stopPropagation();
+    if (flow === 'scenario') { state.t = 0; timeEl.value = '0'; render(); startPlay(); return; }
     if (flow === 'armed') { setWalk('burn0'); startPlay(); }
     else if (flow === 'pick') { setWalk('burn1'); state.t = 0; timeEl.value = '0'; render(); startPlay(); }
     else if (flow === 'done') { setWalk('pick'); setCaption(
       `Drag the budget slider, then run it again.`, 'Run it again →'); }
   };
   $('caption-skip').onclick = e => { e.stopPropagation(); setWalk('free'); };
+
+  // --- what-if: click-to-ignite + wind sliders, simulated live via sim.js ---
+  const igniteBtn = $('ignite-btn'), resetBtn = $('scenario-reset');
+  const wsEl = $('wind-speed'), wdEl = $('wind-dir');
+  let picking = false;
+  function scenarioLine() {
+    const where = scenario && scenario.cell !== histIgnCell ? 'your ignition point' : meta.ignition.label.split(' (')[0];
+    return `A fire from ${where}, wind ${wind.speed_mph} mph from the ${compass(wind.from_deg)}. ` +
+      `Breaks are the ones the solver bought for the historical fire at this budget.`;
+  }
+  const histIgnCell = sim ? sim.cellOf(physics.ignition_rc[0], physics.ignition_rc[1]) : -1;
+  const isHistWind = () => wind.speed_mph === meta.wind.speed_mph && wind.from_deg === meta.wind.from_deg;
+  function windLabels() {
+    $('wind-speed-label').textContent = `${wind.speed_mph} mph`;
+    $('wind-dir-label').textContent = `${wind.from_deg}° ${compass(wind.from_deg)}`;
+    $('basemap-status').textContent = statusBits();
+  }
+  function setPicking(on) {
+    picking = on;
+    document.body.classList.toggle('picking', on);
+    igniteBtn.textContent = on ? 'Click the map…' : 'Start a fire anywhere';
+  }
+  function applyScenario() {
+    if (timer) stopPlay();
+    sim.setWind(wind.speed_mph, wind.from_deg);
+    baseGrid = sim.toU16(sim.run(scenario.cell, null));
+    scenGrids = []; scenStats = [];
+    dropGhost();
+    const [r, c] = [Math.floor(scenario.cell / cols), scenario.cell % cols];
+    const lat = Math.atan(Math.sinh(yN - ((r + 0.5) / rows) * (yN - yS))) * 180 / Math.PI;
+    const lon = b.west + ((c + 0.5) / cols) * (b.east - b.west);
+    ignMarker.setLatLng(scenario.cell === histIgnCell ? [meta.ignition.lat, meta.ignition.lon] : [lat, lon]);
+    ignMarker.setIcon(ignIcon(scenario.cell === histIgnCell ? histIgnLabel : 'your ignition'));
+    $('scenario-value').textContent = scenario.cell === histIgnCell ? 'Historical ignition, your wind' : 'Your fire';
+    resetBtn.hidden = false;
+    windLabels();
+    state.t = 0; timeEl.value = '0';
+    setBudgetValue(state.budget, true);
+    setWalk('scenario');
+  }
+  function resetScenario() {
+    if (timer) stopPlay();
+    scenario = null; scenGrids = []; scenStats = [];
+    wind = { speed_mph: meta.wind.speed_mph, from_deg: meta.wind.from_deg };
+    wsEl.value = String(wind.speed_mph); wdEl.value = String(wind.from_deg);
+    baseGrid = histBase;
+    dropGhost();
+    ignMarker.setLatLng([meta.ignition.lat, meta.ignition.lon]);
+    ignMarker.setIcon(ignIcon(histIgnLabel));
+    $('scenario-value').textContent = 'Historical fire';
+    resetBtn.hidden = true;
+    setPicking(false);
+    windLabels();
+    state.t = 0; timeEl.value = '0';
+    setBudgetValue(state.budget, true);
+    setWalk('free');
+  }
+  // Nearest burnable cell within a few cells of (r, c), or -1 (water, bare rock).
+  function snapIgnition(r, c) {
+    for (let rad = 0; rad <= 6; rad++) {
+      for (let dr = -rad; dr <= rad; dr++) for (let dc = -rad; dc <= rad; dc++) {
+        if (Math.max(Math.abs(dr), Math.abs(dc)) !== rad) continue;
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+        if (sim.base[rr * cols + cc] > 0) return rr * cols + cc;
+      }
+    }
+    return -1;
+  }
+  if (sim) {
+    $('scenario-block').hidden = false;
+    wsEl.value = String(wind.speed_mph); wdEl.value = String(wind.from_deg);
+    windLabels();
+    igniteBtn.onclick = () => setPicking(!picking);
+    resetBtn.onclick = resetScenario;
+    map.on('click', e => {
+      if (!picking) return;
+      const fyF = (yN - merc(e.latlng.lat)) / (yN - yS);
+      const fxF = (e.latlng.lng - b.west) / (b.east - b.west);
+      if (fxF < 0 || fxF >= 1 || fyF < 0 || fyF >= 1) return;
+      const cell = snapIgnition(Math.floor(fyF * rows), Math.floor(fxF * cols));
+      if (cell < 0) { setCaption('Nothing to burn there — try a spot with fuel.', null); return; }
+      setPicking(false);
+      scenario = { cell, wind };
+      applyScenario();
+    });
+    let windRaf = 0;
+    const onWind = () => {
+      wind = { speed_mph: Number(wsEl.value), from_deg: Number(wdEl.value) };
+      windLabels();
+      if (!scenario && isHistWind()) return;
+      if (!windRaf) windRaf = requestAnimationFrame(() => {
+        windRaf = 0;
+        if (!scenario) scenario = { cell: histIgnCell, wind };
+        scenario.wind = wind;
+        applyScenario();
+      });
+    };
+    wsEl.oninput = onWind; wdEl.oninput = onWind;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && picking) setPicking(false); });
+  }
 
   // --- break hover: cell → active break → green highlight + mono tooltip ---
   const tip = $('break-tip');

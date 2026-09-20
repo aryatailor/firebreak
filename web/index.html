@@ -52,11 +52,24 @@
     <p id="stat-line" class="mono">SPENT $0 &#183; +0 MIN EVACUATION</p>
   </section>
 
+  <section class="control" id="scenario-block" hidden>
+    <div class="control-head"><label class="mono">03 — What if</label><span class="control-value mono" id="scenario-value">Historical fire</span></div>
+    <div class="scenario-row">
+      <button id="ignite-btn" type="button" class="mono">Start a fire anywhere</button>
+      <button id="scenario-reset" type="button" class="mono" hidden>Reset</button>
+    </div>
+    <div class="control-head sub"><label class="mono" for="wind-speed">Wind speed</label><span class="control-value mono" id="wind-speed-label"></span></div>
+    <input id="wind-speed" type="range" min="0" max="70" step="1" value="35">
+    <div class="control-head sub"><label class="mono" for="wind-dir">Wind from</label><span class="control-value mono" id="wind-dir-label"></span></div>
+    <input id="wind-dir" type="range" min="0" max="355" step="5" value="45">
+    <p id="scenario-note">Click the map to start a fire, or change the wind. The fire is re-simulated live against the breaks bought at this budget.</p>
+  </section>
+
   <details id="more">
     <summary class="mono">More &#9656;</summary>
 
     <section class="control" id="time-block">
-      <div class="control-head"><label class="mono" for="time">03 — Timeline</label><span class="control-value mono" id="time-label">0h 00m</span></div>
+      <div class="control-head"><label class="mono" for="time">04 — Timeline</label><span class="control-value mono" id="time-label">0h 00m</span></div>
       <div class="time-row">
         <button id="play" type="button" class="mono" aria-label="Play">&#9654;&#xFE0E;</button>
         <input id="time" type="range" min="0" max="720" step="5" value="0">
@@ -64,13 +77,13 @@
     </section>
 
     <details id="explore">
-      <summary class="mono">04 — Budget &#8594; homes saved</summary>
+      <summary class="mono">05 — Budget &#8594; homes saved</summary>
       <p id="curve-sentence" class="mono"></p>
       <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative homes saved"></svg>
     </details>
 
     <details id="simplifications">
-      <summary class="mono">05 — Real vs simplified</summary>
+      <summary class="mono">06 — Real vs simplified</summary>
       <ul id="simp-list"></ul>
     </details>
 
@@ -81,6 +94,7 @@
   </details>
 </aside>
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="sim.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
