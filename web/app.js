@@ -131,7 +131,9 @@ const FireLayer = L.Layer.extend({
     L.DomUtil.setTransform(this._canvas, nb.min, scale);
     L.DomUtil.setTransform(this._glow, nb.min, scale);
   },
-  setBreaks(mask, cellBreak) { this._mask = mask; this._cellBreak = cellBreak; },
+  setBreaks(mask, cellBreak, edgeDir) {
+    this._mask = mask; this._cellBreak = cellBreak; this._edir = edgeDir;
+  },
   setHover(bi) { this._hover = bi; },
   // Homes live INSIDE this canvas (2×2 blocks at hx/hy in 2× grid px, sub-cell
   // jitter preserved) so they can never move independently of the grid.
@@ -167,8 +169,19 @@ const FireLayer = L.Layer.extend({
         gd[go + 3] = 0;
         if (mask && mask[i]) {                    // cleared ground (fuel break)
           if (hover >= 0 && cb[i] === hover) { R = 61; G = 220; B = 132; A = 217; }
-          else if (mask[i] === 2) { R = 233; G = 220; B = 188; A = 89; }   // edge .35
-          else { R = 217; G = 201; B = 163; A = 217; }                     // #d9c9a3 .85
+          else if (this._edir && this._edir[i]) {
+            // strip perimeter: 1 px (sub-cell) lighter rim at 0.35 alpha
+            const eb = this._edir[i];
+            const put = (p, rim) => {
+              if (rim) { d[p] = 233; d[p + 1] = 220; d[p + 2] = 188; d[p + 3] = 89; }
+              else { d[p] = 217; d[p + 1] = 201; d[p + 2] = 163; d[p + 3] = 217; }
+            };
+            put(o, (eb & 1) || (eb & 4));
+            put(o + 4, (eb & 1) || (eb & 8));
+            put(o + row4, (eb & 2) || (eb & 4));
+            put(o + row4 + 4, (eb & 2) || (eb & 8));
+            continue;
+          } else { R = 217; G = 201; B = 163; A = 217; }                   // #d9c9a3 .85
         }
       }
       d[o] = R; d[o + 1] = G; d[o + 2] = B; d[o + 3] = A;
@@ -648,12 +661,13 @@ async function main() {
     }),
   }).addTo(map);
 
-  // Breaks → cells; mask marks active break cells (1) and their edges (2).
+  // Breaks → cells; mask marks active break cells, edge bits their outward rim.
   const braster = rasterizeBreaks(model.breaksFC, meta);
   const breakMask = new Uint8Array(rows * cols);
-  fire.setBreaks(breakMask, braster.cellBreak);
+  const breakEdge = new Uint8Array(rows * cols);   // bits: 1 N, 2 S, 4 W, 8 E
+  fire.setBreaks(breakMask, braster.cellBreak, breakEdge);
   function rebuildBreakMask(stepIdx) {
-    breakMask.fill(0);
+    breakMask.fill(0); breakEdge.fill(0);
     for (const bk of braster.breaks) {
       if (bk.step <= stepIdx) for (const c of bk.cells) breakMask[c] = 1;
     }
@@ -661,9 +675,12 @@ async function main() {
       if (bk.step > stepIdx) continue;
       for (const c of bk.cells) {
         const r = (c / cols) | 0, cc = c % cols;
-        if (r === 0 || r === rows - 1 || cc === 0 || cc === cols - 1 ||
-            !breakMask[c - cols] || !breakMask[c + cols] ||
-            !breakMask[c - 1] || !breakMask[c + 1]) breakMask[c] = 2;
+        let e = 0;
+        if (r === 0 || !breakMask[c - cols]) e |= 1;
+        if (r === rows - 1 || !breakMask[c + cols]) e |= 2;
+        if (cc === 0 || !breakMask[c - 1]) e |= 4;
+        if (cc === cols - 1 || !breakMask[c + 1]) e |= 8;
+        breakEdge[c] = e;
       }
     }
   }
