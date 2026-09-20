@@ -7,9 +7,18 @@
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="intro">
 <div id="map"></div>
 <div id="legend" hidden></div>
+
+<div id="intro">
+  <div id="intro-inner">
+    <h1>FIREBREAK</h1>
+    <p id="intro-story">loading…</p>
+    <button id="intro-run" type="button">Run the fire &#8594;</button>
+  </div>
+</div>
+
 <aside id="panel">
   <header>
     <h1>Firebreak</h1>
@@ -19,7 +28,7 @@
   <section id="stats" aria-live="polite">
     <div class="stat">
       <div class="stat-value" id="stat-hit">–</div>
-      <div class="stat-label"><span class="swatch" style="background:#ff3b3b"></span><span id="stat-hit-label">buildings hit</span></div>
+      <div class="stat-label"><span class="swatch" style="background:#ff3b3b"></span><span id="stat-hit-label">homes hit</span></div>
     </div>
     <div class="stat">
       <div class="stat-value" id="stat-spent">–</div>
@@ -42,13 +51,14 @@
   </section>
 
   <section class="control">
-    <div class="control-head"><label for="budget">Budget</label><span class="control-value" id="budget-label">$0</span></div>
-    <input id="budget" type="range" min="0" max="1" step="1" value="0">
+    <div class="control-head"><label for="budget">Budget</label></div>
+    <input id="budget" type="range" min="0" max="5000000" step="10000" value="0">
     <div class="ticks" id="budget-ticks"></div>
+    <div id="budget-readout" class="mono">$0 · 0 breaks · 0 homes saved · 0 min bought</div>
   </section>
 
   <section class="control">
-    <div class="control-head"><label for="time">Time after ignition</label><span class="control-value" id="time-label">0h 00m</span></div>
+    <div class="control-head"><label for="time">Time after ignition</label><span class="control-value mono" id="time-label">0h 00m</span></div>
     <div class="time-row">
       <button id="play" type="button" aria-label="Play">&#9654;&#xFE0E;</button>
       <input id="time" type="range" min="0" max="720" step="5" value="0">
@@ -66,7 +76,10 @@
     <ul id="simp-list"></ul>
   </details>
 
-  <footer><span id="basemap-status">basemap: …</span><span id="data-tag"></span></footer>
+  <footer>
+    <span id="basemap-status" class="mono">…</span>
+    <button id="sound" type="button" class="mono">SOUND OFF</button>
+  </footer>
 </aside>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>

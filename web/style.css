@@ -38,7 +38,11 @@ body {
 .control-value { color: var(--ink); font-size: 12px; text-transform: none; font-variant-numeric: tabular-nums; }
 input[type=range] { width: 100%; margin: 8px 0 2px; accent-color: var(--green); }
 #time { margin: 0; accent-color: var(--fire); }
-.ticks { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted); }
+.ticks { position: relative; height: 13px; font-size: 9.5px; color: var(--muted); }
+.ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+.ticks span:first-child { transform: none; }
+.ticks span:last-child { transform: translateX(-100%); }
+#budget-readout { margin-top: 8px; font-size: 11.5px; color: var(--ink); letter-spacing: .02em; }
 .time-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 #play {
   width: 34px; height: 28px; flex: 0 0 auto; font-size: 12px; line-height: 1;
@@ -81,7 +85,13 @@ input[type=range] { width: 100%; margin: 8px 0 2px; accent-color: var(--green); 
   line-height: 1.5; max-height: 160px; overflow-y: auto;
 }
 
-footer { margin-top: auto; display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--muted); }
+footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px; color: var(--muted); }
+#sound {
+  background: none; border: 1px solid var(--line); border-radius: 2px;
+  color: var(--muted); font-size: 9.5px; letter-spacing: .08em;
+  padding: 3px 7px; cursor: pointer;
+}
+#sound:hover { color: var(--ink); border-color: var(--muted); }
 
 /* ---- map overlays ---- */
 #legend {
@@ -95,10 +105,41 @@ footer { margin-top: auto; display: flex; justify-content: space-between; gap: 8
 
 .fire-canvas { image-rendering: pixelated; filter: blur(1.2px); }
 .glow-canvas { mix-blend-mode: screen; }   /* smooth-scaled on purpose — soft halo */
-.fire-canvas, .glow-canvas, .dots-canvas { pointer-events: none; }
+.fire-canvas, .glow-canvas, .houses-canvas { pointer-events: none; }
 
-/* satellite dimmed so the fire is the only saturated thing on screen */
-.leaflet-tile { filter: brightness(0.72) saturate(0.8); }
+/* satellite dimmed so the fire is the only saturated thing on screen —
+   except during the intro, where the map sits undimmed and still */
+.leaflet-tile { filter: brightness(0.72) saturate(0.8); transition: filter .8s ease; }
+body.intro .leaflet-tile { filter: none; }
+body.intro #map { inset: 0; }
+body.intro #panel, body.intro #legend { display: none; }
+body.intro .leaflet-control-container, body.intro .ign { display: none; }
+
+/* ---- intro title card ---- */
+#intro {
+  position: fixed; inset: 0; z-index: 2000; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; opacity: 1; transition: opacity .6s ease;
+}
+#intro.gone { opacity: 0; pointer-events: none; }
+#intro h1 {
+  margin: 0; color: #ffffff; font-weight: 700;
+  font-size: clamp(64px, 11vw, 150px); letter-spacing: .18em;
+  text-indent: .18em;   /* recenters wide tracking */
+  text-shadow: 0 2px 32px rgba(0, 0, 0, .85), 0 0 4px rgba(0, 0, 0, .6);
+}
+#intro p {
+  margin: 14px 0 0; color: #d9dbde; font-size: 15px;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .9);
+}
+#intro-run {
+  margin-top: 36px; padding: 12px 22px; cursor: pointer;
+  background: rgba(10, 11, 13, .55); color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, .5); border-radius: 2px;
+  font: 13px/1 "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+#intro-run:hover { border-color: #ffffff; }
 
 /* ignition marker: amber dot, 2 s pulse, mono label */
 .ign { pointer-events: none; }
