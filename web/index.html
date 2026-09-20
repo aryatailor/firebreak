@@ -7,10 +7,17 @@
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body class="intro" data-flow="A">
+<body class="intro" data-flow="armed">
 <div id="map"></div>
 <div id="legend" hidden></div>
 <div id="break-tip" class="mono" hidden></div>
+
+<div id="caption" class="mono" hidden>
+  <p id="caption-text"></p>
+  <button id="caption-btn" type="button" hidden></button>
+  <button id="caption-skip" type="button">Skip &#183; free play</button>
+</div>
+<div id="point-arrow" class="mono" hidden>&#10230;</div>
 
 <div id="intro">
   <div id="intro-inner">
@@ -25,14 +32,6 @@
     <h1>FIREBREAK</h1>
     <p id="story">loading…</p>
   </header>
-
-  <section id="guide">
-    <p id="guide-line">&nbsp;</p>
-    <div id="guide-actions">
-      <button id="guide-primary" type="button" class="mono" hidden></button>
-      <button id="guide-secondary" type="button" class="mono" hidden></button>
-    </div>
-  </section>
 
   <section id="stats" aria-live="polite">
     <div class="stat">

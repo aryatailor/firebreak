@@ -740,13 +740,13 @@ async function main() {
   const audio = makeAudio();
   const state = { t: 0, budget: 0, step: 0, arrival: baseGrid };
   let maxFresh = 1;
-  let flow = 'A';   // guided flow: A baseline · B pick budget · C run with breaks
+  let flow = 'armed';   // walkthrough state (see setWalk)
   let lastCounts = { hit: 0, saved: 0 };
 
   const fmtInt = n => n.toLocaleString();
   function updateStats() {
     const st = model.steps[state.step];
-    if (flow === 'C') {
+    if (flow === 'burn1' || flow === 'done') {
       setNum($('stat-1'), lastCounts.saved, fmtInt);
       setNum($('stat-2'), st.minutesBought || 0, n => `${n} min`);
       setNum($('stat-3'), st.cost, fmtMoney);
@@ -800,6 +800,11 @@ async function main() {
       render();
     }
     updateReadout();
+    // first drag in the pick state reveals the replay button
+    if (flow === 'pick' && state.budget > 0 && capBtn.hidden) {
+      capBtn.hidden = false;
+      capBtn.textContent = 'Run it again →';
+    }
   }
 
   // Controls — continuous budget slider (maps to the last step ≤ budget).
@@ -859,7 +864,8 @@ async function main() {
     soundLabel();
   };
 
-  // --- guided flow: A baseline plays · B pick a budget · C run it with breaks ---
+  // --- walkthrough: armed → burn0 → pick → burn1 → done, plus free play.
+  // Every state has a caption saying what is happening and what to do next. ---
   let ghost = null;
   function showGhost(on) {
     if (on && !ghost) {
@@ -868,53 +874,63 @@ async function main() {
     if (on && !map.hasLayer(ghost)) ghost.addTo(map);
     if (!on && ghost && map.hasLayer(ghost)) map.removeLayer(ghost);
   }
-  const guideLine = $('guide-line'), gPrim = $('guide-primary'), gSec = $('guide-secondary');
-  function setGuide(line, prim, sec) {
-    guideLine.textContent = line;
-    gPrim.hidden = !prim; if (prim) gPrim.textContent = prim;
-    gSec.hidden = !sec; if (sec) gSec.textContent = sec;
+  const capEl = $('caption'), capText = $('caption-text'), capBtn = $('caption-btn');
+  const arrowEl = $('point-arrow');
+  const townName = meta.town.split(',')[0];
+  const openerLine = meta.town.startsWith('Paradise')
+    ? 'Paradise, California. 6:30 AM, November 8, 2018. The Camp Fire started here.'
+    : meta.story;
+  function setCaption(text, btn) {
+    capEl.hidden = !text;
+    capText.textContent = text || '';
+    capBtn.hidden = !btn;
+    if (btn) capBtn.textContent = btn;
   }
-  function setFlow(f) {
+  function pointAtBudget(on) {
+    arrowEl.hidden = !on;
+    if (on) {
+      const r = $('budget-block').getBoundingClientRect();
+      arrowEl.style.top = `${r.top + 26}px`;
+    }
+  }
+  function setWalk(f) {
     flow = f;
     document.body.dataset.flow = f;
-    const labels = f === 'C'
+    const cLabels = f === 'burn1' || f === 'done'
       ? ['homes saved', 'evacuation time bought', 'spent']
       : ['homes hit', 'spent', 'homes saved'];
     ['stat-1-label', 'stat-2-label', 'stat-3-label'].forEach((id, i) => {
-      $(id).textContent = labels[i];
+      const el = $(id); if (el) el.textContent = cLabels[i];
     });
-    showGhost(f === 'C');
-    if (f === 'A') setGuide('Nov 8, 2018. No fuel breaks.', null, null);
-    if (f === 'B') setGuide('Now give Paradise a budget.', 'Run it again →', null);
-    if (f === 'C') setGuide(`${fmtM2(state.budget)} in breaks. Same fire.`, null, null);
+    showGhost(f === 'burn1' || f === 'done');
+    pointAtBudget(f === 'pick');
+    if (f === 'armed') setCaption(openerLine, 'Watch it happen →');
+    if (f === 'burn0') setCaption('The fire spreads southwest with the wind — 12 hours in 20 seconds. Every red square is a home burning.', null);
+    if (f === 'pick') setCaption(
+      `${lastCounts.hit.toLocaleString()} of ${nB.toLocaleString()} homes gone. ` +
+      `Now give ${townName} a budget for fuel breaks — drag the slider.`, null);
+    if (f === 'burn1') setCaption('Same fire. Your fuel breaks are the pale strips of cleared ground.', null);
+    if (f === 'done') {
+      const st = model.steps[state.step];
+      const mb = st.minutesBought == null ? '—' : st.minutesBought;
+      setCaption(`${fmtMoney(st.cost)} · ${lastCounts.saved.toLocaleString()} homes saved · ` +
+        `${mb} minutes of evacuation time bought.`, 'Try another budget');
+    }
+    if (f === 'free') setCaption(null, null);
     updateStats();
   }
   function onRunEnd() {
-    if (flow === 'A') setFlow('B');
-    else if (flow === 'C') {
-      const st = model.steps[state.step];
-      setGuide(state.step > 0
-        ? `${fmtMoney(st.cost)} saved ${lastCounts.saved.toLocaleString()} homes.`
-        : '$0 spent — same fire, same outcome.',
-        'Try another budget', 'Explore budgets');
-    }
+    if (flow === 'burn0') setWalk('pick');
+    else if (flow === 'burn1') setWalk('done');
   }
-  gPrim.onclick = () => {
-    if (flow === 'B') {
-      setFlow('C');
-      state.t = 0; timeEl.value = '0';
-      render();
-      startPlay();
-    } else if (flow === 'C') {
-      setFlow('B');
-    }
+  capBtn.onclick = e => {
+    e.stopPropagation();
+    if (flow === 'armed') { setWalk('burn0'); startPlay(); }
+    else if (flow === 'pick') { setWalk('burn1'); state.t = 0; timeEl.value = '0'; render(); startPlay(); }
+    else if (flow === 'done') { setWalk('pick'); setCaption(
+      `Drag the budget slider, then run it again.`, 'Run it again →'); }
   };
-  gSec.onclick = () => {
-    if (flow === 'C') {
-      $('explore').open = true;
-      $('explore').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  };
+  $('caption-skip').onclick = e => { e.stopPropagation(); setWalk('free'); };
 
   // --- break hover: cell → active break → green highlight + mono tooltip ---
   const tip = $('break-tip');
@@ -962,11 +978,11 @@ async function main() {
     setTimeout(() => intro.remove(), 700);
     map.invalidateSize();
     map.fitBounds(bounds, { padding: [10, 10] });
-    startPlay();
+    setWalk('armed');   // walkthrough: fire waits for "Watch it happen →"
   }
   $('intro').addEventListener('click', () => startApp(true));
 
-  setFlow('A');
+  setWalk('armed');
   setBudgetValue(0, true);
   soundLabel();
   if (SKIP_INTRO) startApp(false);

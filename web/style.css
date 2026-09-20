@@ -30,18 +30,36 @@ body {
 }
 #story { margin: 5px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
 
-/* guided flow */
-#guide { border-top: 1px solid var(--line); padding-top: 11px; }
-#guide-line { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
-#guide-actions { display: flex; gap: 8px; margin-top: 9px; }
-#guide-actions button {
-  padding: 8px 12px; cursor: pointer; background: none;
-  border: 1px solid var(--line); border-radius: 2px; color: var(--ink);
-  font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+/* walkthrough caption card: top-left over the map — dark, mono, no border */
+#caption {
+  position: absolute; left: 12px; top: 12px; z-index: 1200; max-width: 380px;
+  padding: 14px 16px 12px; background: rgba(10, 11, 13, .88); border-radius: 2px;
 }
-#guide-primary { border-color: var(--green); color: var(--green); }
-#guide-primary:hover { background: rgba(61, 220, 132, .08); }
-#guide-secondary:hover { border-color: var(--muted); }
+#caption[hidden] { display: none; }
+#caption-text { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink); letter-spacing: .02em; }
+#caption-btn {
+  margin-top: 12px; padding: 9px 14px; cursor: pointer; display: block;
+  background: none; border: 1px solid var(--green); border-radius: 2px;
+  color: var(--green); font-family: var(--mono);
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+}
+#caption-btn:hover { background: rgba(61, 220, 132, .08); }
+#caption-btn[hidden] { display: none; }
+#caption-skip {
+  margin-top: 10px; padding: 0; display: block; cursor: pointer;
+  background: none; border: none; color: var(--muted); font-family: var(--mono);
+  font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+}
+#caption-skip:hover { color: var(--ink); }
+body.intro #caption, body.intro #point-arrow { display: none; }
+
+/* arrow pointing at the budget slider (pick state) */
+#point-arrow {
+  position: fixed; right: 346px; z-index: 1200; color: var(--green);
+  font-size: 22px; animation: nudge 1.2s ease-in-out infinite;
+}
+#point-arrow[hidden] { display: none; }
+@keyframes nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(8px); } }
 
 /* big numbers — no cards, hairlines between rows */
 #stats { display: flex; flex-direction: column; }
@@ -113,12 +131,18 @@ input[type=range]::-moz-range-thumb {
 }
 #play:hover { border-color: var(--muted); }
 
-/* guided-flow dimming: controls not for the current state are dimmed, not hidden */
-body[data-flow="A"] #budget-block, body[data-flow="C"] #budget-block,
-body[data-flow="A"] #explore {
+/* walkthrough dimming: controls not for the current state are dimmed, not hidden.
+   Budget lights up only when picking (or done / free play); everything secondary
+   stays dimmed until free play. */
+body:not([data-flow="pick"]):not([data-flow="done"]):not([data-flow="free"]) #budget-block {
   opacity: .35; pointer-events: none;
 }
-body[data-flow="A"] .stat:nth-child(2), body[data-flow="A"] .stat:nth-child(3) { opacity: .4; }
+body:not([data-flow="free"]) #time-block,
+body:not([data-flow="free"]) #explore {
+  opacity: .35; pointer-events: none;
+}
+body[data-flow="armed"] .stat:nth-child(2), body[data-flow="armed"] .stat:nth-child(3),
+body[data-flow="burn0"] .stat:nth-child(2), body[data-flow="burn0"] .stat:nth-child(3) { opacity: .4; }
 
 /* curve (inline SVG): 1 px line, dotted grid, no fill */
 #curve { width: 100%; height: auto; display: block; margin-top: 8px; }
