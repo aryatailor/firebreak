@@ -6,10 +6,11 @@ Stage 2 of the Firebreak pipeline (see implementation-notes.md "## Plan").
   distance (Mercator size inflated by 1/cos(center lat)), anchored NW, snapped to
   whole cells. Geometry comes from common.grid_geometry(town bounds).
 - Nearest-neighbor resampling for the categorical fuel layer, bilinear for elevation.
-- Fuel vintage rule (plan section 2 + approval amendment): compare 200F40_19 (Remap)
-  against 140FBFM40 in the ignition->town corridor; a clear burn-scar signature or an
-  ambiguous result both pick 140FBFM40; only a clean Remap uses it. Numbers recorded
-  in grid_meta.json and later meta.data.
+- Fuel vintage (plan section 2, amended by Deviation): the live LFPS product table
+  offers no LF2014 layer, so the two-vintage comparison is impossible. The fetched
+  LF2016_FBFM40 is the LF 2016 Remap base (~2016 conditions, pre-Camp-Fire); a
+  corridor sanity check (woody fraction along ignition->town) confirms it is not a
+  burn-scarred layer. Numbers recorded in grid_meta.json and later meta.data.
 - Buildings from the cached Overpass JSON -> (row, col); fewer than 500 -> proxy
   points from built-up (urban) cells, flagged buildings_proxy.
 - Writes: fuel.npy, elev.npy, buildings.npz, grid_meta.json, alignment_check.png
@@ -90,33 +91,29 @@ def _corridor_mask(geom: dict, cfg: dict, width_m: float = 3000.0) -> np.ndarray
     return dist <= width_m * (geom["cell_merc"] / geom["cell_m"])  # ground -> merc
 
 
-def choose_fuel_vintage(remap: np.ndarray, lf2014: np.ndarray, geom: dict,
-                        cfg: dict) -> tuple[np.ndarray, dict]:
-    """A fresh burn scar shows as woody 2014 fuels (shrub/timber) turned grass or
-    barren in the Remap layer across the ignition->town corridor. Clear scar or
-    ambiguous -> 140FBFM40 (approved default); only a clean Remap is used."""
+def check_fuel_prefire(fuel: np.ndarray, geom: dict, cfg: dict, town: str) -> dict:
+    """The live LFPS table offers no second vintage to compare against, so this is
+    an absolute check: the ignition->town corridor should be dominated by woody
+    fuels (shrub/timber) if the layer is pre-fire; a fresh burn scar would read as
+    grass/barren instead. Low woody fraction is logged loudly, not fatal - the
+    alignment_check eyeball is the final gate."""
     corridor = _corridor_mask(geom, cfg)
     woody_codes = (common.FUEL_GROUPS["shrub"] + common.FUEL_GROUPS["timber_understory"]
                    + common.FUEL_GROUPS["timber_litter"])
-    scar_codes = common.FUEL_GROUPS["grass"] + [99]
-    woody14 = np.isin(lf2014, woody_codes) & corridor
-    denom = int(woody14.sum())
-    scar = int((woody14 & np.isin(remap, scar_codes)).sum())
-    scar_frac = scar / denom if denom else 1.0
-    changed_frac = float((remap != lf2014)[corridor].mean()) if corridor.any() else 1.0
-
-    if scar_frac > 0.20:
-        choice, reason = "140FBFM40", "burn-scar signature in Remap over the corridor"
-    elif scar_frac < 0.05:
-        choice, reason = "200F40_19", "no scar signature - Remap is pre-fire here"
-    else:
-        choice, reason = "140FBFM40", "ambiguous - approved default (amendment)"
-
-    check = {"scar_frac": round(scar_frac, 4), "changed_frac": round(changed_frac, 4),
-             "woody_2014_corridor_cells": denom, "choice": choice, "reason": reason}
-    print(f"  fuel vintage check: scar_frac={scar_frac:.3f} changed_frac="
-          f"{changed_frac:.3f} (n={denom}) -> {choice} ({reason})")
-    return (lf2014 if choice == "140FBFM40" else remap), check
+    n = int(corridor.sum())
+    woody_frac = float(np.isin(fuel, woody_codes)[corridor].mean()) if n else 0.0
+    scar_frac = float(np.isin(fuel, common.FUEL_GROUPS["grass"] + [99])[corridor].mean()) if n else 1.0
+    looks_prefire = woody_frac >= 0.30
+    check = {"woody_frac": round(woody_frac, 4), "grass_barren_frac": round(scar_frac, 4),
+             "corridor_cells": n, "looks_prefire": looks_prefire,
+             "note": "absolute check - no LF2014 layer on the live LFPS to compare"}
+    print(f"  pre-fire check: corridor woody={woody_frac:.3f} grass/barren="
+          f"{scar_frac:.3f} (n={n}) -> {'looks pre-fire' if looks_prefire else 'SUSPICIOUS'}")
+    if not looks_prefire:
+        common.log_event("grid", town,
+                         f"fuel layer corridor is only {woody_frac:.0%} woody - possible "
+                         f"burn scar in LF2016_FBFM40; eyeball alignment_check.png")
+    return check
 
 
 # --- buildings ------------------------------------------------------------------
@@ -261,17 +258,15 @@ def run(town: str, cell_m: float = 60.0, quick: bool = False) -> None:
     fuel_check = None
     if status["fuel_terrain"]["source"] == "landfire-lfps":
         bands = json.loads((raw / "landfire_bands.json").read_text(encoding="utf-8"))
-        print("  reprojecting LANDFIRE bands (Albers -> EPSG:3857) ...")
-        remap = reproject_band(bands["200F40_19"]["path"], bands["200F40_19"]["band"],
-                               geom, categorical=True, dst_nodata=-1)
-        lf2014 = reproject_band(bands["140FBFM40"]["path"], bands["140FBFM40"]["band"],
-                                geom, categorical=True, dst_nodata=-1)
-        elev = reproject_band(bands["ELEV2020"]["path"], bands["ELEV2020"]["band"],
+        print("  reprojecting LANDFIRE bands (local Albers -> EPSG:3857) ...")
+        fuel = reproject_band(bands["LF2016_FBFM40"]["path"],
+                              bands["LF2016_FBFM40"]["band"],
+                              geom, categorical=True, dst_nodata=-1)
+        elev = reproject_band(bands["LF2020_Elev"]["path"], bands["LF2020_Elev"]["band"],
                               geom, categorical=False, dst_nodata=-9999.0)
-        fuel, fuel_check = choose_fuel_vintage(remap, lf2014, geom, cfg)
-        fuel_product = (f"LANDFIRE {fuel_check['choice']} "
-                        f"({'LF 2014' if fuel_check['choice'] == '140FBFM40' else 'LF 2016 Remap'})")
-        terrain_source = "LANDFIRE ELEV2020"
+        fuel_check = check_fuel_prefire(fuel, geom, cfg, town)
+        fuel_product = "LANDFIRE LF2016_FBFM40 (LF 2016 Remap, pre-fire)"
+        terrain_source = "LANDFIRE LF2020_Elev"
     else:
         print("  reprojecting WorldCover + Copernicus DEM (fallback source) ...")
         wc = reproject_band(str(raw / "worldcover.tif"), 1, geom,

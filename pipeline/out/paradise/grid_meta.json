@@ -1,0 +1,53 @@
+{
+  "town": "paradise",
+  "name": "Paradise, CA",
+  "rows": 334,
+  "cols": 456,
+  "cell_m": 60.0,
+  "cell_merc": 78.06212554011756,
+  "bounds": {
+    "west": -121.7,
+    "north": 39.86,
+    "east": -121.38023273379507,
+    "south": 39.67997776462637
+  },
+  "bounds_3857": {
+    "west_m": -13547582.029541396,
+    "north_m": 4845618.668538584,
+    "east_m": -13511985.700295102,
+    "south_m": 4819545.918608185
+  },
+  "fuel": {
+    "product": "LANDFIRE LF2016_FBFM40 (LF 2016 Remap, pre-fire)",
+    "check": {
+      "woody_frac": 0.7608,
+      "grass_barren_frac": 0.0734,
+      "corridor_cells": 35257,
+      "looks_prefire": true,
+      "note": "absolute check - no LF2014 layer on the live LFPS to compare"
+    }
+  },
+  "terrain": "LANDFIRE LF2020_Elev",
+  "buildings": {
+    "source": "overpass (https://overpass-api.de/api/interpreter)",
+    "count": 1799,
+    "proxy": false
+  },
+  "fuel_group_cells": {
+    "grass": 15616,
+    "grass_shrub": 11546,
+    "shrub": 11846,
+    "timber_understory": 62670,
+    "timber_litter": 43301,
+    "slash": 0,
+    "urban": 4961,
+    "snow": 0,
+    "agriculture": 40,
+    "water": 1393,
+    "barren": 931
+  },
+  "unknown_fuel_frac": 0.0,
+  "elev_nodata_frac": 0.0,
+  "fetched": "2026-09-19",
+  "generated": "2026-09-19T21:57:35"
+}

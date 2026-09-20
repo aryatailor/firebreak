@@ -2,10 +2,12 @@
 
 Stage 1 of the Firebreak pipeline (see implementation-notes.md "## Plan").
 
-- LANDFIRE via LFPS (the LANDFIRE Product Service): FBFM40 fuel model (both
-  200F40_19 Remap and 140FBFM40 vintages - build_grid picks per plan section 2)
-  + ELEV2020 elevation, one job. Product codes are validated against the landfire
-  package's product search before requesting, never guessed.
+- LANDFIRE via the live LFPS REST API (lfps.usgs.gov/api). The python landfire
+  package's endpoint was retired (see Deviations in implementation-notes.md); the
+  live product table offers FBFM40 no earlier than LF2016 (the pre-Camp-Fire Remap
+  base) and elevation as LF2020_Elev, so those are fetched - one job, submit ->
+  poll -> download zip. Product codes are validated against the live /api/products
+  listing before requesting, never guessed.
 - The LFPS request runs in a subprocess with a wall-clock timeout (default 20 min);
   on timeout or error the stage falls back to ESA WorldCover 2021 10 m + Copernicus
   DEM GLO-30 (both public AWS COGs, windowed reads, no keys) and records the switch
@@ -36,7 +38,9 @@ import requests
 
 import common
 
-LANDFIRE_LAYERS = ["200F40_19", "140FBFM40", "ELEV2020"]
+LANDFIRE_LAYERS = ["LF2016_FBFM40", "LF2020_Elev"]
+LFPS_API = "https://lfps.usgs.gov/api"
+LFPS_EMAIL = "zdspeck@asu.edu"  # LFPS requires an email param; no key, no account
 
 OVERPASS_MIRRORS = [
     "https://overpass-api.de/api/interpreter",
@@ -53,58 +57,59 @@ COPDEM_URL = ("https://copernicus-dem-30m.s3.amazonaws.com/"
 
 # --- LANDFIRE (primary source) --------------------------------------------------
 
-def _walk_strings(obj):
-    if isinstance(obj, dict):
-        for v in obj.values():
-            yield from _walk_strings(v)
-    elif isinstance(obj, (list, tuple)):
-        for v in obj:
-            yield from _walk_strings(v)
-    elif isinstance(obj, str):
-        yield obj
-    else:
-        d = getattr(obj, "__dict__", None)
-        if d:
-            yield from _walk_strings(d)
-
-
-def _available_layer_codes(ps) -> set[str]:
-    """Layer codes straight from the product search - never guessed. get_layers()
-    is the documented path; walking get_products() is the defensive fallback."""
-    try:
-        layers = ps.get_layers()
-        if isinstance(layers, (list, tuple, set)) and layers and all(
-                isinstance(x, str) for x in layers):
-            return set(layers)
-    except Exception as e:
-        print(f"  ProductSearch.get_layers() unusable ({e}); walking get_products()")
-    return set(_walk_strings(ps.get_products()))
-
-
 def landfire_worker(town: str) -> None:
-    """Runs in a subprocess so the parent can enforce a hard wall-clock timeout
-    (the landfire package polls LFPS with no timeout of its own)."""
-    from landfire import Landfire
-    from landfire.product.search import ProductSearch
-
+    """Talks to the live LFPS REST API: validate layers against /api/products,
+    submit the job, poll, download the zip. Runs in a subprocess so the parent can
+    enforce a hard wall-clock timeout on the whole exchange."""
     cfg = common.load_town(town)
     raw = common.raw_dir(town)
 
-    available = _available_layer_codes(ProductSearch())
+    r = requests.get(f"{LFPS_API}/products", timeout=60, headers=HTTP_HEADERS)
+    r.raise_for_status()
+    available = {p.get("layerName") for p in r.json().get("products", [])}
     missing = [l for l in LANDFIRE_LAYERS if l not in available]
     if missing:
-        sys.exit(f"layer codes not present in the landfire product search: {missing} "
+        sys.exit(f"layer codes not present in the live LFPS product table: {missing} "
                  f"- refusing to guess (plan section 2)")
-    print(f"  product search confirms layers: {LANDFIRE_LAYERS}")
+    print(f"  live LFPS product table confirms layers: {LANDFIRE_LAYERS}")
 
     b = cfg["bounds"]
-    bbox = f"{b['west']} {b['south']} {b['east']} {b['north']}"
+    aoi = f"{b['west']} {b['south']} {b['east']} {b['north']}"
+    r = requests.get(f"{LFPS_API}/job/submit",
+                     params={"Email": LFPS_EMAIL,
+                             "Layer_List": ";".join(LANDFIRE_LAYERS),
+                             "Area_of_Interest": aoi},
+                     timeout=60, headers=HTTP_HEADERS)
+    r.raise_for_status()
+    job = r.json()
+    job_id = job.get("jobId")
+    if not job_id:
+        sys.exit(f"LFPS submit returned no jobId: {json.dumps(job)[:400]}")
+    print(f"  LFPS job {job_id} submitted (aoi {aoi})")
+
+    while True:
+        time.sleep(8)
+        s = requests.get(f"{LFPS_API}/job/status", params={"JobId": job_id},
+                         timeout=60, headers=HTTP_HEADERS).json()
+        status = s.get("status")
+        print(f"  LFPS status: {status}")
+        if status == "Succeeded":
+            break
+        if status in ("Failed", "Cancelled", "TimedOut"):
+            errs = [m["description"] for m in s.get("messages", [])
+                    if "Error" in m.get("type", "")]
+            sys.exit(f"LFPS job {job_id} {status}: {errs}")
+
+    out_url = s.get("outputFile")
+    if not out_url:
+        sys.exit(f"LFPS job {job_id} succeeded but has no outputFile")
     out_zip = raw / "landfire.zip"
-    print(f"  LFPS job: bbox=({bbox}) layers={LANDFIRE_LAYERS} -> {out_zip}")
-    # show_status=False: the package's tqdm status lines contain emoji that raise
-    # UnicodeEncodeError on a piped cp1252 stdout (Windows), killing the worker.
-    Landfire(bbox=bbox).request_data(layers=LANDFIRE_LAYERS, output_path=str(out_zip),
-                                     show_status=False)
+    print(f"  downloading {out_url}")
+    with requests.get(out_url, stream=True, timeout=300, headers=HTTP_HEADERS) as dl:
+        dl.raise_for_status()
+        with out_zip.open("wb") as f:
+            for chunk in dl.iter_content(1 << 20):
+                f.write(chunk)
     if not out_zip.exists() or out_zip.stat().st_size < 10_000:
         sys.exit(f"LFPS produced no usable zip at {out_zip}")
     print(f"  LFPS done: {out_zip.stat().st_size / 1e6:.1f} MB")
@@ -165,7 +170,7 @@ def fetch_landfire(town: str, raw: Path, timeout_min: float, force: bool) -> dic
     t0 = time.monotonic()
     try:
         # PYTHONUTF8: the worker inherits a piped cp1252 stdout on Windows;
-        # any non-ASCII output from the landfire package would kill it.
+        # any non-ASCII output (service messages, tracebacks) would kill it.
         result = subprocess.run(cmd, timeout=timeout_min * 60,
                                 env={**os.environ, "PYTHONUTF8": "1"})
     except subprocess.TimeoutExpired:

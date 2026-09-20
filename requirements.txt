@@ -6,7 +6,6 @@ shapely>=2.0
 requests>=2.31
 tqdm>=4.66
 Pillow>=10.0
-# The landfire package declares Requires-Python <3.12 (stale packaging pin; it runs
-# fine on 3.13). It is NOT listed above because it would abort this whole file on
-# modern Pythons. Install it separately:
-#   pip install landfire --ignore-requires-python --only-binary=:all:
+# The landfire package is NOT needed: its LFPS endpoint was retired (see Deviations
+# in implementation-notes.md). fetch_data.py talks to the live lfps.usgs.gov/api
+# REST service directly with requests.

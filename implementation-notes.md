@@ -243,6 +243,20 @@ solver shape (§7), schema freeze (§8). Everything else is mechanics.**
 
 ## Deviations
 
+- **LFPS transport (2026-09-19, fetch time)**: the landfire package's BASE_URL (the
+  old ArcGIS GPServer endpoint) is retired — it now serves the LANDFIRE web app's
+  HTML, so `request_data` dies parsing JSON. The live service is a REST API at
+  `lfps.usgs.gov/api` (products / job submit / status / download). fetch_data.py now
+  calls it directly with `requests`; layer codes are validated against the live
+  `/api/products` table before submitting — still discovered, never guessed. The
+  landfire package is no longer imported anywhere.
+- **Fuel vintage (same discovery)**: the live product table offers FBFM40 no earlier
+  than `LF2016_FBFM40` (LF 2016 Remap base, ~2016 conditions — pre-Camp-Fire) and has
+  no LF2014 layer, so §2's Remap-vs-2014 comparison is impossible. Conservative
+  option taken: `LF2016_FBFM40` (it IS the plan's preferred "fuels as mapped just
+  before the fire") with an absolute corridor woody-fraction check at build time
+  replacing the comparison; elevation is `LF2020_Elev`. Decided within the 10-minute
+  amendment budget; check numbers recorded in grid_meta.json → meta.data.
 - **landfire package vs Python 3.13**: every release of `landfire` pins
   Requires-Python < 3.12 (stale packaging; the machine runs 3.13), which aborted the
   original one-shot `pip install -r requirements.txt`. Installed it with
@@ -251,3 +265,42 @@ solver shape (§7), schema freeze (§8). Everything else is mechanics.**
   requirements.txt documents the extra command; rasterio and the rest of the stack
   install and import cleanly on 3.13. Conservative fallback (WSL / a 3.11 venv) not
   needed unless `request_data` misbehaves at fetch time — Zach decides that.
+
+## Frontend deviations
+
+Where web/ goes beyond or interprets DESIGN.md; nothing here touches CONTRACT.md.
+
+- **Building dots are a canvas layer, not per-building markers** — DESIGN.md specifies
+  3 px dots but not the mechanism; real data brings 10–15k points, where DOM/SVG
+  markers would crawl. One viewport-sized canvas, two fill passes (unhit, then hit).
+- **Auto-play on load** — the page starts the 20 s sweep immediately so the demo lands
+  without a click. Spacebar also toggles play/pause.
+- **`?offline=1` URL flag** — forces the offline basemap path for rehearsal/testing
+  without killing wifi (the automatic 3 s probe stays as specified; both paths
+  verified in headless Chromium).
+- **Fuel legend on the map, offline only** — fuel_legend.json says "for the legend UI"
+  but DESIGN.md's panel list has no legend slot; rendered as a chip row bottom-left on
+  the map, visible only while the fuel-tinted PNG is the basemap (satellite needs none).
+- **Ignition marker** — small amber/orange circle + hover tooltip at meta.ignition
+  (the skeleton's default blue Leaflet pin looked wrong on the dark theme).
+- **Fire age ramp spans 180 min** — DESIGN.md gives the four colors but not the age
+  scale; kept the skeleton's value (fresh edge → charcoal over 3 h).
+- **Curve marks spent, not budget** — the dashed line + dot sit at the solution's
+  actual `cost` (≤ budget), so the marker always lies on the curve; exact
+  spent-of-budget figures are in the Spent tile's hover title.
+- **"Houses saved" ticks live with t** — computed as baseline-hit(t) − current-hit(t),
+  so it converges to `stats.houses_saved` at the horizon instead of showing the
+  end-state number during the whole sweep.
+- **Panel footer** shows basemap mode (offline/satellite) and the active data dir —
+  demo-day sanity indicators.
+- **Mid-build design change (Zach, 2026-09-19), superseding DESIGN.md §Map layers:**
+  (1) default basemap is now satellite tiles with basemap.png blended over at **35%
+  opacity** for relief (offline fallback = the same PNG at 100%). Since the PNG now
+  always renders first, the 3 s probe cutoff protected nothing and silently forfeited
+  the upgrade on a slow first TLS handshake (observed in testing) — the probe now
+  gates only *whether* tiles are added (probe error ⇒ never), not *when*; a
+  late-loading probe still upgrades, seamlessly, because the PNG stays on top;
+  (2) cells ignited within the **last 30 min** of current t get a soft glow — a
+  second smooth-scaled canvas, blurred and screen-blended, above the crisp cell
+  layer; (3) no 3D, no audio. DESIGN.md's text not edited from this session (web/-only
+  commit rule) — it should be synced to match.
