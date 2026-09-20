@@ -105,7 +105,11 @@ def solution_entry(sim: Simulator, params: dict, base_stats: dict, mask, breaks_
     }
 
 
-def run(town: str) -> None:
+def run(town: str, with_solver: bool = True) -> None:
+    """with_solver=False is the free-play export: meta, physics-ready baseline,
+    buildings, basemap, legend - no solutions/steps/curve/breaks, because no
+    solver was run. The index entry for such a town carries story:false and
+    CONTRACT.md tells the page not to expect solver files."""
     cfg = common.load_town(town)
     out = common.out_dir(town)
     sim = Simulator(town)
@@ -113,11 +117,14 @@ def run(town: str) -> None:
     config = json.loads((out / "config.json").read_text(encoding="utf-8"))
     params = config["params"]
     gm = json.loads((out / "grid_meta.json").read_text(encoding="utf-8"))
-    solve = json.loads((out / "solve_result.json").read_text(encoding="utf-8"))
+    solve = (json.loads((out / "solve_result.json").read_text(encoding="utf-8"))
+             if with_solver else {"accepted": [], "curve": []})
 
-    z = np.load(out / "candidates.npz")
-    cand_cells = {int(i): (z["flat_r"][s:s + n], z["flat_c"][s:s + n])
-                  for i, (s, n) in enumerate(zip(z["starts"], z["lengths"]))}
+    cand_cells = {}
+    if with_solver:
+        z = np.load(out / "candidates.npz")
+        cand_cells = {int(i): (z["flat_r"][s:s + n], z["flat_c"][s:s + n])
+                      for i, (s, n) in enumerate(zip(z["starts"], z["lengths"]))}
 
     web = common.web_dir(cfg)
     print(f"  export target: {web}")
@@ -139,7 +146,7 @@ def run(town: str) -> None:
     # --- solutions: greedy prefixes per budget ----------------------------------
     accepted = solve["accepted"]
     solutions = []
-    for budget in cfg["budgets"]:
+    for budget in (cfg["budgets"] if with_solver else []):
         prefix = [a for a in accepted if a["cum_cost"] <= budget]
         mask = np.zeros(sim.fuel.shape, dtype=bool)
         features = []
@@ -173,7 +180,7 @@ def run(town: str) -> None:
                 "minutes_bought": 0 if step == 0 else bought,
                 "arrival_b64": b64_grid_u8(arr, horizon)}
 
-    steps = [step_entry(0, [], 0.0, 0, base_arr)]
+    steps = [step_entry(0, [], 0.0, 0, base_arr)] if with_solver else []
     break_features = []
     step_mask = np.zeros(sim.fuel.shape, dtype=bool)
     for k, a in enumerate(accepted, start=1):
@@ -186,26 +193,30 @@ def run(town: str) -> None:
             {"id": a["id"], "step": k, "cells": a["cells"],
              "cost": round(a["cost"]), "fuel_group": dominant_group(sim, rr, cc)}))
     breaks_geojson = {"type": "FeatureCollection", "features": break_features}
-    print(f"  steps.json: {len(steps)} entries (step 0 = baseline + "
-          f"{len(accepted)} greedy steps)")
+    if with_solver:
+        print(f"  steps.json: {len(steps)} entries (step 0 = baseline + "
+              f"{len(accepted)} greedy steps)")
 
     # --- ring fallback (Zach: ship this if the solver's breaks are ugly) --------
-    ring = ring_break_mask(sim)
-    rr, cc = np.nonzero(ring)
-    ring_cost = float(cell_costs(sim.fuel)[rr, cc].sum())
-    ring_fc = {"type": "FeatureCollection",
-               "features": [cells_to_geojson_feature(
-                   sim, rr, cc, {"id": "ring", "cells": int(rr.size),
-                                 "cost": round(ring_cost),
-                                 "fuel_group": dominant_group(sim, rr, cc)})]}
-    ring_entry = solution_entry(sim, params, base_stats, ring, ring_fc,
-                                None, ring_cost, horizon)
-    ring_entry["note"] = ("calibration ring fallback - swap into solutions.json "
-                          "if the solver output is ugly; cost exceeds all budgets")
-    (out / "ring_fallback.json").write_text(json.dumps(ring_entry),
-                                            encoding="utf-8")
-    print(f"  ring fallback: cost ${ring_cost:,.0f}, saved "
-          f"{ring_entry['stats']['houses_saved']} -> {out / 'ring_fallback.json'}")
+    if with_solver:
+        ring = ring_break_mask(sim)
+        rr, cc = np.nonzero(ring)
+        ring_cost = float(cell_costs(sim.fuel)[rr, cc].sum())
+        ring_fc = {"type": "FeatureCollection",
+                   "features": [cells_to_geojson_feature(
+                       sim, rr, cc, {"id": "ring", "cells": int(rr.size),
+                                     "cost": round(ring_cost),
+                                     "fuel_group": dominant_group(sim, rr, cc)})]}
+        ring_entry = solution_entry(sim, params, base_stats, ring, ring_fc,
+                                    None, ring_cost, horizon)
+        ring_entry["note"] = ("calibration ring fallback - swap into "
+                              "solutions.json if the solver output is ugly; "
+                              "cost exceeds all budgets")
+        (out / "ring_fallback.json").write_text(json.dumps(ring_entry),
+                                                encoding="utf-8")
+        print(f"  ring fallback: cost ${ring_cost:,.0f}, saved "
+              f"{ring_entry['stats']['houses_saved']} -> "
+              f"{out / 'ring_fallback.json'}")
 
     # --- meta -------------------------------------------------------------------
     ign_r, ign_c = config["ignition_cell"]
@@ -252,14 +263,17 @@ def run(town: str) -> None:
                         zip(sim.b_lat, sim.b_lon, sim.b_row, sim.b_col))]
         files = {
             "meta.json": meta, "baseline.json": baseline,
-            "solutions.json": solutions,
-            "curve.json": {"points": solve["curve"]},
-            "steps.json": steps,
-            "breaks.geojson": breaks_geojson,
             "buildings.geojson": {"type": "FeatureCollection", "features": features},
             "fuel_legend.json": [{"group": g, "color": c}
                                  for g, c in common.GROUP_COLORS.items()],
         }
+        if with_solver:
+            files.update({
+                "solutions.json": solutions,
+                "curve.json": {"points": solve["curve"]},
+                "steps.json": steps,
+                "breaks.geojson": breaks_geojson,
+            })
         for name, obj in files.items():
             (web / name).write_text(json.dumps(obj, separators=(",", ":")),
                                     encoding="utf-8")
@@ -290,12 +304,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Write web/data/ per CONTRACT.md; enforce the 5 MB budget.")
     p.add_argument("--town", default="paradise",
                    help="name of towns/<town>.json (default: paradise)")
+    p.add_argument("--no-solve", action="store_true",
+                   help="free-play export: no solutions/steps/curve/breaks")
     return p
 
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
-    common.run_stage("export", args.town, lambda: run(args.town))
+    common.run_stage("export", args.town,
+                     lambda: run(args.town, with_solver=not args.no_solve))
 
 
 if __name__ == "__main__":

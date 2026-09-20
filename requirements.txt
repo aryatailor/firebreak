@@ -1,4 +1,8 @@
 numpy>=1.26
+# serve.py (the demo server + free-play API). Pinned; demo.ps1 falls back to
+# python -m http.server if these are missing, so the demo runs either way.
+fastapi==0.115.6
+uvicorn==0.34.0
 scipy>=1.11
 rasterio>=1.3.9
 pyproj>=3.6

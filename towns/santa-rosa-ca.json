@@ -1,0 +1,38 @@
+{
+  "name": "Santa Rosa, CA",
+  "story": "Free play. Santa Rosa, CA.",
+  "crawl": [
+    "Santa Rosa, CA.",
+    "Click anywhere to start a fire. Draw breaks to stop it."
+  ],
+  "bounds": {
+    "west": -122.83999999999999,
+    "south": 38.35,
+    "east": -122.58,
+    "north": 38.550000000000004
+  },
+  "ignition": {
+    "lat": 38.4995,
+    "lon": -122.64565,
+    "label": "Ignition"
+  },
+  "wind": {
+    "speed_mph": 30,
+    "from_deg": 45
+  },
+  "town_center": {
+    "lat": 38.45,
+    "lon": -122.71
+  },
+  "homes_cap": 20000,
+  "fuel_layer": "LF2025_FBFM40",
+  "web_dir": "towns/santa-rosa-ca",
+  "horizon_min": 720,
+  "budgets": [
+    500000,
+    1000000,
+    2000000,
+    3000000
+  ],
+  "free_play": true
+}
