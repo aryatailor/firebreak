@@ -122,6 +122,43 @@ Honestly: the breaks buy meaningful evacuation time under every wind we tested
 from a direction the plan wasn't optimized for (60° @ 45 mph) routes the fire
 around the breaks, and only the time bought survives.
 
+## Robust breaks — "what if it starts somewhere else?"
+
+`python pipeline/run_all.py --town <t> --robust` builds an ensemble of 25 fires
+(the historical ignition plus 11 upwind wildland ignitions, each under the
+calibrated wind and ±10 mph / ±15° variants; `pipeline/ensemble.py`) and re-runs
+the CELF solver with objective = **mean homes saved across the ensemble per
+dollar** (`pipeline/robust.py`). The single-fire plan is kept
+(`solve_result_single.json`) and both plans are scored on the same ensemble
+(`web/<town>/robust.json`), so the page can toggle between "optimized for the
+historical fire" and "optimized for any plausible fire".
+
+The robust plan's *average* is far below the historical plan's headline on its one
+fire — but the historical plan averaged over the same 25 fires is lower still
+(Paradise: 218 / 326 / 467 / 687 mean saved at $500k / $1M / $2M / $3M, vs the
+robust plan's 327 / 540 / 839 / 1,193). The page shows both numbers.
+
+| Town | Budget | Robust plan, mean saved | Historical plan, saved on its fire |
+|---|---|---|---|
+| Paradise | $500k / $1M / $2M / $3M / $5M | 327 / 540 / 839 / 1,193 / 1,659 | 2,515 / 3,610 / 4,663 / 5,519 / 6,173 |
+| Altadena | $500k / $1M / $2M / $3M | 2,214 / 3,247 / 5,455 / 6,768 | 2,982 / 8,219 / 11,822 / 12,911 |
+| Santa Rosa (Tubbs, 2017) | $500k / $1M / $2M / $3M | 4,703 / 6,918 / 9,713 / 11,450 | 9,105 / 11,350 / 16,050 / 18,443 |
+
+Santa Rosa (`towns/santarosa.json`, LF2016 fuels): baseline 21,942 of 30,000
+homes hit, first home at 49 minutes; calibration ring cut homes hit by 57%.
+
+Two more historical towns were attempted and **did not pass the calibration
+gates**, so they are not shipped: Lahaina, HI (every parameter sweep hits 99.8%
+of homes in the box — the model cannot reproduce a partial burn there) and
+Superior–Louisville, CO (flat grass under 60 mph wind: the hand-placed test ring
+cuts homes hit by <1%, far below the required 30%). Configs are in `towns/` for
+whoever wants to try.
+
+The browser also runs the fire itself now (`web/sim.js`, the CONTRACT.md
+algorithm on `physics.json`; `node web/tools/parity.mjs` checks it against the
+Python arrival grids — 100% exact on all shipped towns). That is what powers
+"start a fire anywhere" and the wind sliders.
+
 ## Run it
 
 ```
@@ -132,7 +169,8 @@ Rebuild any town from raw data:
 
 ```
 pip install -r requirements.txt --only-binary=:all:
-python pipeline/run_all.py --town paradise
+python pipeline/run_all.py --town paradise            # historical-fire plan only
+python pipeline/run_all.py --town paradise --robust   # + ensemble and robust plan
 ```
 
 A new town is one config file — bounds, ignition, wind, homes estimate, fuel
