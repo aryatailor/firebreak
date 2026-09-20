@@ -300,10 +300,10 @@ body[data-flow="free"] #budget-block { display: none; }
 
 /* ---- map overlays ---- */
 #legend {
-  position: absolute; left: 8px; bottom: 8px; z-index: 1000;
-  display: flex; gap: 8px; padding: 5px 8px; font-size: 9.5px; color: var(--muted);
-  background: rgba(10, 11, 13, .85); border: 1px solid var(--line); border-radius: 2px;
-  font-family: var(--mono);
+  position: absolute; left: 14px; bottom: 46px; z-index: 1000; max-width: 42vw;
+  display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 9px;
+  font-size: 9px; letter-spacing: .04em; color: var(--muted);
+  background: rgba(10, 11, 13, .85); border-radius: 2px; font-family: var(--mono);
 }
 #legend[hidden] { display: none; }
 .chip { display: flex; align-items: center; gap: 4px; }

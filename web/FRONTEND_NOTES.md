@@ -159,6 +159,47 @@ screen competes with it).
 - Nothing autoplays. The audio context is created by the Enter click and by nothing
   else, and the mute toggle sits in the panel footer.
 
+## Tier 6: self-judge loop
+
+Four cycles of screenshot, critique, fix, re-shoot. Thirteen states captured at
+1920x1080 into `deck/shots/`: title, crawl, burn, budget, replay, result, free play,
+draw break, info modal, US wide view with region pins, Altadena crawl and burn, and
+offline mode.
+
+Facts the final cycle returns:
+
+- **Load to interactive: 91 to 99 ms** (first contentful paint 84 ms). The budget was
+  3 s. The title card is plain markup, so it paints before any data is fetched.
+- **No console errors, no unexpected 404s.** The only 404 is `api/health` on a static
+  server, which is the deliberate probe for `serve.py`.
+- **Walkthrough completes with no dead end** in every run, ending at `done` with
+  "$2M · 4,663 homes saved · 282 min evacuation time."
+- **Free play completes** ignite, draw and result: "187 homes saved · $833k ·
+  9,393 lost" after drawing across the fire's path.
+- Copy sweep over every visible string in every state: **no em dashes, no
+  exclamation marks, no sentence over 12 words.**
+
+Fixed during the loop:
+
+1. The panel kept showing the story's "SPENT $2M · +282 MIN EVACUATION" after
+   entering free play. Free play now reports its own spend and its own delay to the
+   first home, and the numbers are computed before the panel is drawn rather than
+   after.
+2. The fuel legend sat on top of the timeline strip and its labels collided. It now
+   sits above the strip and wraps.
+3. Hand-drawn breaks vanished once the fire burnt over them, which is where free
+   play leaves the clock. Cleared ground now keeps a pale sand tint through the burn.
+4. **The built-up area ended in a hard straight line at the grid boundary**, which
+   gave away the rectangle exactly the way the fire used to. Homes now use the same
+   edge feather as the fire: nothing drawn in the outer 5 cells, fading in over the
+   next 20.
+5. Saved-home rings dropped from full alpha to 210 so dense towns read as a texture
+   rather than a neon blanket.
+
+Known and left alone: in a dense town like Altadena the standing homes read as a
+pale field at region zoom, because there really is a home on nearly every developed
+cell. Zooming in resolves them. The colour and alpha are the ones specified.
+
 ### Home drift, measured
 
 Homes are pixels inside the fire's grid canvas, so their position is quantised to

@@ -207,21 +207,26 @@ const FireLayer = L.Layer.extend({
       const hx = this._hx, hy = this._hy, hst = this._hst;
       for (let i = 0; i < hx.length; i++) {
         const x = hx[i], y = hy[i], o = (y * W2 + x) * 4;
+        // same edge feather as the fire, so the built-up area never ends in a
+        // straight line along the grid boundary
+        const fade = ef[((y >> 1) * cols) + (x >> 1)];
+        if (fade <= 0) continue;
         const burned = hst[i] === 1;
         const R = burned ? 255 : 216, G = burned ? 59 : 216, B = burned ? 59 : 211;
-        const A = burned ? 255 : 204;
+        const A = (burned ? 255 : 204) * fade;
         for (const p of [o, o + 4, o + row4, o + row4 + 4]) {
           d[p] = R; d[p + 1] = G; d[p + 2] = B; d[p + 3] = A;
         }
         if (hst[i] === 2) {          // saved: 1 px green ring around the block
+          const ringA = 210 * fade;
           const top = o - row4 - 4, bot = o + 2 * row4 - 4;
           for (let k = 0; k < 4; k++) {
             for (const p of [top + k * 4, bot + k * 4]) {
-              d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = 255;
+              d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = ringA;
             }
           }
           for (const p of [o - 4, o + 8, o + row4 - 4, o + row4 + 8]) {
-            d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = 255;
+            d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = ringA;
           }
         }
       }
@@ -859,8 +864,14 @@ async function main() {
 
   const fmtInt = n => n.toLocaleString();
   function updateStats() {
-    const st = model.steps[state.step];
     setNum($('stat-saved'), lastCounts.saved, fmtInt);
+    if (flow === 'free') {
+      // free play has its own spend and its own delay, not the solver's
+      $('stat-line').textContent =
+        `SPENT ${fmtMoney(fp.cost || 0)} · +${Math.round(fp.minutesBought || 0)} MIN TO FIRST HOME`;
+      return;
+    }
+    const st = model.steps[state.step];
     const mb = st.minutesBought == null ? '0' : `+${Math.round(st.minutesBought)}`;
     $('stat-line').textContent = `SPENT ${fmtMoney(st.cost)} · ${mb} MIN EVACUATION`;
   }
@@ -1029,12 +1040,15 @@ async function main() {
       state.arrival = bucketsToMinutes(use.buckets, fp.bucketMin);
       fpBaseGrid = bucketsToMinutes(bare.buckets, fp.bucketMin);
       setMaskFromCells(all);
-      state.t = H;
-      timeEl.value = String(H);
-      render();
       const lost = use.stats.homes_hit;
       const saved = Math.max(0, bare.stats.homes_hit - lost);
       const cost = breakCost(all);
+      fp.cost = cost;
+      fp.minutesBought = Math.max(0,
+        (use.stats.minutes_to_first_home || 0) - (bare.stats.minutes_to_first_home || 0));
+      state.t = H;
+      timeEl.value = String(H);
+      render();                       // after the numbers, so the panel shows them
       $('fp-sim').textContent = `${Math.round(use.stats.sim_seconds * 1000)} ms`;
       fpSetResult(all.length
         ? `${saved.toLocaleString()} homes saved · ${fmtMoney(cost)} · ${lost.toLocaleString()} lost`
