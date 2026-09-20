@@ -262,6 +262,94 @@ const HousesLayer = L.Layer.extend({
   },
 });
 
+/* Ghost of the baseline burn perimeter (state C): dashed white outline drawn from
+   merged horizontal/vertical boundary runs of the baseline burned mask. */
+const GhostLayer = L.Layer.extend({
+  initialize(bounds, rows, cols, runs, opts) {
+    L.setOptions(this, opts);
+    this._b = bounds; this._rows = rows; this._cols = cols; this._runs = runs;
+  },
+  onAdd() {
+    const c = this._canvas = L.DomUtil.create('canvas', 'ghost-canvas leaflet-zoom-animated');
+    c.width = this._cols * 2; c.height = this._rows * 2;
+    const x = c.getContext('2d');
+    x.strokeStyle = 'rgba(255,255,255,0.55)';
+    x.lineWidth = 1;
+    x.setLineDash([5, 4]);
+    x.beginPath();
+    for (const [x0, y0, x1, y1] of this._runs) {
+      x.moveTo(x0 * 2, y0 * 2); x.lineTo(x1 * 2, y1 * 2);
+    }
+    x.stroke();
+    this.getPane().appendChild(c);
+    this._reset();
+  },
+  onRemove() { this._canvas.remove(); },
+  getEvents() {
+    const ev = { zoom: this._reset, viewreset: this._reset };
+    if (this._zoomAnimated) ev.zoomanim = this._animateZoom;
+    return ev;
+  },
+  _reset() {
+    const nw = this._map.latLngToLayerPoint(this._b.getNorthWest());
+    const se = this._map.latLngToLayerPoint(this._b.getSouthEast());
+    L.DomUtil.setPosition(this._canvas, nw);
+    this._canvas.style.width = `${se.x - nw.x}px`;
+    this._canvas.style.height = `${se.y - nw.y}px`;
+  },
+  _animateZoom(e) {
+    const nb = this._map._latLngBoundsToNewLayerBounds(this._b, e.zoom, e.center);
+    L.DomUtil.setTransform(this._canvas, nb.min, this._map.getZoomScale(e.zoom));
+  },
+});
+
+/* Boundary of {arrival <= H}, as merged straight runs in cell coordinates.
+   Edges on the domain border are skipped — where the fire runs off-grid there is
+   no real perimeter to draw. */
+function boundaryRuns(grid, rows, cols, H) {
+  const burned = (r, c) => r >= 0 && r < rows && c >= 0 && c < cols && grid[r * cols + c] <= H;
+  const runs = [];
+  for (let r = 1; r < rows; r++) {           // horizontal edges at y = r (interior)
+    let start = -1;
+    for (let c = 0; c <= cols; c++) {
+      const edge = c < cols && burned(r, c) !== burned(r - 1, c);
+      if (edge && start < 0) start = c;
+      if (!edge && start >= 0) { runs.push([start, r, c, r]); start = -1; }
+    }
+  }
+  for (let c = 1; c < cols; c++) {           // vertical edges at x = c (interior)
+    let start = -1;
+    for (let r = 0; r <= rows; r++) {
+      const edge = r < rows && burned(r, c) !== burned(r, c - 1);
+      if (edge && start < 0) start = r;
+      if (!edge && start >= 0) { runs.push([c, start, c, r]); start = -1; }
+    }
+  }
+  return runs;
+}
+
+/* Tween a numeric display over ~150 ms (big numbers). */
+const tweens = new Map();
+function setNum(el, target, fmt) {
+  const prev = tweens.get(el);
+  if (prev && prev.target === target) return;
+  if (!prev && el.textContent !== '–') {
+    // seed from nothing: jump straight there on first write
+  }
+  const from = prev ? prev.value : target;
+  const t0 = performance.now();
+  const tw = { target, value: from };
+  tweens.set(el, tw);
+  const tick = now => {
+    if (tweens.get(el) !== tw) return;
+    const k = Math.min(1, (now - t0) / 150);
+    tw.value = from + (target - from) * k;
+    el.textContent = fmt(Math.round(tw.value));
+    if (k < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 /* Offline basemap PNG with its edges feathered by a `feather`-px alpha ramp so it
    fades into the dark page instead of reading as a pasted rectangle. */
 function featheredOverlay(src, bounds, feather) {
@@ -355,7 +443,7 @@ function rasterizeBreaks(breaksFC, meta) {
         }
       }
     }
-    return { props: ft.properties, step: ft.properties.step ?? bi, cells };
+    return { props: ft.properties, step: ft.properties.step ?? bi + 1, cells };
   });
   return { breaks, cellBreak };
 }
@@ -482,7 +570,7 @@ function buildCurve(points) {
    top-left as homes burn; green-ringed squares fill from the bottom-right as the
    baseline front passes homes the breaks protect. */
 function buildWaffle(total) {
-  const cv = $('waffle'), COLS = 20, CELL = 14, SQ = 11;
+  const cv = $('waffle'), COLS = 20, CELL = 12, SQ = 10;
   const unit = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500].find(u => total / u <= 320) || 1000;
   const n = Math.ceil(total / unit), rows = Math.ceil(n / COLS);
   const dpr = window.devicePixelRatio || 1;
@@ -512,11 +600,51 @@ function buildWaffle(total) {
   };
 }
 
+/* The dense per-step model (steps.json array + breaks.geojson). CONTRACT.md: when
+   those files are absent, degrade to the five snap budgets in solutions.json. */
+async function loadModel() {
+  try {
+    const [arr, breaksFC] = await Promise.all([
+      loadJSON('steps.json'), loadJSON('breaks.geojson'),
+    ]);
+    let cum = 0;
+    const steps = arr.map(s => {
+      cum += (s.break_ids || []).length;
+      return {
+        cost: s.cumulative_cost, saved: s.cumulative_saved,
+        minutesBought: s.minutes_bought == null ? null : s.minutes_bought,
+        b64u8: s.arrival_b64, breakCount: cum,
+      };
+    });
+    return { steps, breaksFC, dense: true };
+  } catch (err) {
+    console.warn(`steps.json/breaks.geojson unavailable (${err.message}) — snap budgets only`);
+    const solutions = await loadJSON('solutions.json');
+    const feats = [], seen = new Set();
+    const steps = [{ cost: 0, saved: 0, minutesBought: 0, breakCount: 0 }];
+    solutions.forEach((sol, i) => {
+      for (const f of sol.breaks.features) {
+        if (!seen.has(f.properties.id)) {
+          seen.add(f.properties.id);
+          feats.push({ type: 'Feature', geometry: f.geometry,
+            properties: Object.assign({}, f.properties, { step: i + 1 }) });
+        }
+      }
+      steps.push({
+        cost: sol.cost, saved: sol.stats.houses_saved,
+        minutesBought: sol.stats.minutes_bought_town == null ? null : sol.stats.minutes_bought_town,
+        b64u16: sol.arrival_min_b64, breakCount: seen.size,
+      });
+    });
+    return { steps, breaksFC: { type: 'FeatureCollection', features: feats }, dense: false };
+  }
+}
+
 async function main() {
   const meta = await loadJSON('meta.json');
-  const [baseline, steps, curve, buildingsFC, breaksFC, legend] = await Promise.all([
-    loadJSON('baseline.json'), loadJSON('steps.json'), loadJSON('curve.json'),
-    loadJSON('buildings.geojson'), loadJSON('breaks.geojson'), loadJSON('fuel_legend.json'),
+  const [baseline, curve, buildingsFC, legend, model] = await Promise.all([
+    loadJSON('baseline.json'), loadJSON('curve.json'),
+    loadJSON('buildings.geojson'), loadJSON('fuel_legend.json'), loadModel(),
   ]);
   const { rows, cols } = meta.grid, b = meta.bounds;
   const bounds = L.latLngBounds([b.south, b.west], [b.north, b.east]);
@@ -554,7 +682,7 @@ async function main() {
     fx[i] = (lon - b.west) / (b.east - b.west);
     fy[i] = (yN - merc(lat)) / (yN - yS);
   });
-  $('stat-hit-label').textContent = `homes hit of ${nB.toLocaleString()}`;
+  $('homes-label').textContent = `01 — Homes (${nB.toLocaleString()})`;
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
   const houses = new HousesLayer(bounds, fx, fy, states, { pane: 'houses' }).addTo(map);
@@ -568,7 +696,7 @@ async function main() {
   }).addTo(map);
 
   // Breaks → cells; mask marks active break cells (1) and their edges (2).
-  const braster = rasterizeBreaks(breaksFC, meta);
+  const braster = rasterizeBreaks(model.breaksFC, meta);
   const breakMask = new Uint8Array(rows * cols);
   fire.setBreaks(breakMask, braster.cellBreak);
   function rebuildBreakMask(stepIdx) {
@@ -587,16 +715,22 @@ async function main() {
     }
   }
 
-  // Grids: baseline is uint16 minutes; steps are uint8 buckets, expanded on demand.
+  // Grids: step 0 = baseline (uint16 from baseline.json); later steps decode their
+  // uint8 bucket grids — or uint16 grids in the snap-budget fallback — on demand.
   const baseGrid = decodeGrid(baseline.arrival_min_b64, rows, cols);
-  const bucketMin = steps.bucket_min || 5, never8 = steps.never == null ? 255 : steps.never;
   const stepGrids = [];
-  const gridForStep = s => s < 0 ? baseGrid :
-    stepGrids[s] || (stepGrids[s] = decodeStepGrid(steps.steps[s].arrival_5min_b64, rows, cols, bucketMin, never8));
+  const gridForStep = s => {
+    if (s === 0) return baseGrid;
+    if (stepGrids[s]) return stepGrids[s];
+    const st = model.steps[s];
+    return (stepGrids[s] = st.b64u8
+      ? decodeStepGrid(st.b64u8, rows, cols, 5, 255)
+      : decodeGrid(st.b64u16, rows, cols));
+  };
   const stepForBudget = v => {
-    let s = -1;
-    for (let i = 0; i < steps.steps.length; i++) {
-      if (steps.steps[i].cumulative_cost <= v) s = i; else break;
+    let s = 0;
+    for (let i = 0; i < model.steps.length; i++) {
+      if (model.steps[i].cost <= v) s = i; else break;
     }
     return s;
   };
@@ -604,8 +738,24 @@ async function main() {
   const chart = buildCurve(curve.points);
   const waffle = buildWaffle(nB);
   const audio = makeAudio();
-  const state = { t: 0, budget: 0, step: -1, arrival: baseGrid };
+  const state = { t: 0, budget: 0, step: 0, arrival: baseGrid };
   let maxFresh = 1;
+  let flow = 'A';   // guided flow: A baseline · B pick budget · C run with breaks
+  let lastCounts = { hit: 0, saved: 0 };
+
+  const fmtInt = n => n.toLocaleString();
+  function updateStats() {
+    const st = model.steps[state.step];
+    if (flow === 'C') {
+      setNum($('stat-1'), lastCounts.saved, fmtInt);
+      setNum($('stat-2'), st.minutesBought || 0, n => `${n} min`);
+      setNum($('stat-3'), st.cost, fmtMoney);
+    } else {
+      setNum($('stat-1'), lastCounts.hit, fmtInt);
+      setNum($('stat-2'), st.cost, fmtMoney);
+      setNum($('stat-3'), lastCounts.saved, fmtInt);
+    }
+  }
 
   function render() {
     const { t, arrival } = state;
@@ -618,22 +768,22 @@ async function main() {
         if (bb <= t) saved++;   // counts up as the baseline front would pass it
       } else states[i] = 0;                                     // standing
     }
+    lastCounts = { hit, saved };
     const fresh = fire.draw(arrival, t);
     maxFresh = Math.max(maxFresh, fresh);
     audio.setLevel(fresh / maxFresh);
     houses.redraw();
     waffle.draw(hit, saved);
-    $('stat-hit').textContent = hit.toLocaleString();
-    $('stat-saved').textContent = saved.toLocaleString();
+    updateStats();
     $('time-label').textContent = fmtTime(t);
   }
 
   function updateReadout() {
-    const s = state.step, st = s >= 0 ? steps.steps[s] : null;
-    const mb = st ? (st.minutes_bought_town == null ? '—' : st.minutes_bought_town) : 0;
+    const st = model.steps[state.step];
+    const mb = st.minutesBought == null ? '—' : st.minutesBought;
     $('budget-readout').textContent =
-      `${fmtM2(state.budget)} · ${s + 1} break${s === 0 ? '' : 's'} · ` +
-      `${(st ? st.cumulative_saved : 0).toLocaleString()} homes saved · ${mb} min bought`;
+      `${fmtM2(state.budget)} · ${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ` +
+      `${st.saved.toLocaleString()} homes saved · ${mb} min bought`;
   }
 
   function setBudgetValue(v, force) {
@@ -643,12 +793,10 @@ async function main() {
       state.step = s;
       state.arrival = gridForStep(s);
       rebuildBreakMask(s);
-      const st = s >= 0 ? steps.steps[s] : null;
-      $('stat-spent').textContent = st ? fmtMoney(st.cumulative_cost) : '$0';
-      $('stat-spent').title = st ? `$${st.cumulative_cost.toLocaleString()} spent of ${fmtM2(v)} budget` : '';
-      chart.mark(st ? st.cumulative_cost : 0, st ? st.cumulative_saved : 0,
-        st ? `${fmtMoney(st.cumulative_cost)} saves ${st.cumulative_saved} homes`
-           : '$0 saves 0 homes — move the budget slider');
+      const st = model.steps[s];
+      chart.mark(st.cost, st.saved,
+        s > 0 ? `${fmtMoney(st.cost)} saves ${st.saved} homes`
+              : '$0 saves 0 homes — move the budget slider');
       render();
     }
     updateReadout();
@@ -671,7 +819,11 @@ async function main() {
   };
 
   timeEl.max = String(H);
-  timeEl.oninput = () => { state.t = Number(timeEl.value); render(); };
+  timeEl.oninput = () => {
+    state.t = Number(timeEl.value);
+    render();
+    if (state.t >= H) { if (timer) stopPlay(); onRunEnd(); }
+  };
 
   const TICK_MS = 20000 / (H / 5);   // full sweep ≈ 20 s
   let timer = null;
@@ -688,7 +840,7 @@ async function main() {
       state.t = Math.min(state.t + 5, H);
       timeEl.value = String(state.t);
       render();
-      if (state.t >= H) stopPlay();
+      if (state.t >= H) { stopPlay(); onRunEnd(); }
     }, TICK_MS);
   }
   playEl.onclick = () => (timer ? stopPlay() : startPlay());
@@ -707,6 +859,97 @@ async function main() {
     soundLabel();
   };
 
+  // --- guided flow: A baseline plays · B pick a budget · C run it with breaks ---
+  let ghost = null;
+  function showGhost(on) {
+    if (on && !ghost) {
+      ghost = new GhostLayer(bounds, rows, cols, boundaryRuns(baseGrid, rows, cols, H), { pane: 'fire' });
+    }
+    if (on && !map.hasLayer(ghost)) ghost.addTo(map);
+    if (!on && ghost && map.hasLayer(ghost)) map.removeLayer(ghost);
+  }
+  const guideLine = $('guide-line'), gPrim = $('guide-primary'), gSec = $('guide-secondary');
+  function setGuide(line, prim, sec) {
+    guideLine.textContent = line;
+    gPrim.hidden = !prim; if (prim) gPrim.textContent = prim;
+    gSec.hidden = !sec; if (sec) gSec.textContent = sec;
+  }
+  function setFlow(f) {
+    flow = f;
+    document.body.dataset.flow = f;
+    const labels = f === 'C'
+      ? ['homes saved', 'evacuation time bought', 'spent']
+      : ['homes hit', 'spent', 'homes saved'];
+    ['stat-1-label', 'stat-2-label', 'stat-3-label'].forEach((id, i) => {
+      $(id).textContent = labels[i];
+    });
+    showGhost(f === 'C');
+    if (f === 'A') setGuide('Nov 8, 2018. No fuel breaks.', null, null);
+    if (f === 'B') setGuide('Now give Paradise a budget.', 'Run it again →', null);
+    if (f === 'C') setGuide(`${fmtM2(state.budget)} in breaks. Same fire.`, null, null);
+    updateStats();
+  }
+  function onRunEnd() {
+    if (flow === 'A') setFlow('B');
+    else if (flow === 'C') {
+      const st = model.steps[state.step];
+      setGuide(state.step > 0
+        ? `${fmtMoney(st.cost)} saved ${lastCounts.saved.toLocaleString()} homes.`
+        : '$0 spent — same fire, same outcome.',
+        'Try another budget', 'Explore budgets');
+    }
+  }
+  gPrim.onclick = () => {
+    if (flow === 'B') {
+      setFlow('C');
+      state.t = 0; timeEl.value = '0';
+      render();
+      startPlay();
+    } else if (flow === 'C') {
+      setFlow('B');
+    }
+  };
+  gSec.onclick = () => {
+    if (flow === 'C') {
+      $('explore').open = true;
+      $('explore').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
+
+  // --- break hover: cell → active break → green highlight + mono tooltip ---
+  const tip = $('break-tip');
+  const savedByBreak = new Map(curve.points.map((p, i) =>
+    [p.break_id, p.cumulative_saved - (i > 0 ? curve.points[i - 1].cumulative_saved : 0)]));
+  let hoverBi = -1;
+  map.on('mousemove', e => {
+    const fyF = (yN - merc(e.latlng.lat)) / (yN - yS);
+    const fxF = (e.latlng.lng - b.west) / (b.east - b.west);
+    let bi = -1;
+    if (fxF >= 0 && fxF < 1 && fyF >= 0 && fyF < 1) {
+      const cell = Math.floor(fyF * rows) * cols + Math.floor(fxF * cols);
+      const cand = braster.cellBreak[cell];
+      if (cand >= 0 && braster.breaks[cand].step <= state.step) bi = cand;
+    }
+    if (bi !== hoverBi) {
+      hoverBi = bi;
+      fire.setHover(bi);
+      fire.draw(state.arrival, state.t);
+      tip.hidden = bi < 0;
+    }
+    if (bi >= 0) {
+      const bk = braster.breaks[bi];
+      tip.textContent =
+        `BREAK ${bk.props.id} · STEP ${bk.step} · ${fmtMoney(bk.props.cost)} · ` +
+        `${savedByBreak.get(bk.props.id) ?? '—'} HOMES PROTECTED`;
+      tip.style.left = `${e.containerPoint.x + 14}px`;
+      tip.style.top = `${e.containerPoint.y + 14}px`;
+    }
+  });
+  map.on('mouseout', () => {
+    if (hoverBi >= 0) { hoverBi = -1; fire.setHover(-1); fire.draw(state.arrival, state.t); }
+    tip.hidden = true;
+  });
+
   // Intro: full-bleed title card over the undimmed, still map. Click anywhere skips.
   let startedApp = false;
   function startApp(withAudio) {
@@ -723,6 +966,7 @@ async function main() {
   }
   $('intro').addEventListener('click', () => startApp(true));
 
+  setFlow('A');
   setBudgetValue(0, true);
   soundLabel();
   if (SKIP_INTRO) startApp(false);
