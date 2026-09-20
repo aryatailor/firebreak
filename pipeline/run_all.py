@@ -20,6 +20,9 @@ import fetch_data
 import build_grid
 import calibrate
 import simulate
+import candidates
+import solve
+import export
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,9 +51,12 @@ def main(argv=None) -> None:
                      lambda: build_grid.run(args.town, quick=args.quick))
     common.run_stage("calibrate", args.town, lambda: calibrate.run(args.town))
     common.run_stage("simulate", args.town, lambda: simulate.run(args.town))
+    common.run_stage("candidates", args.town, lambda: candidates.run(args.town))
+    common.run_stage("solve", args.town, lambda: solve.run(args.town))
+    common.run_stage("export", args.town, lambda: export.run(args.town))
 
-    print("\nrun_all: fetch + grid + calibrate + baseline done. Later stages "
-          "(candidates, solve, export) land next - see implementation-notes.md.")
+    print("\nrun_all: full chain done - web/data is live. "
+          "python -m http.server -d web 8000 to see it.")
     sys.exit(0)
 
 

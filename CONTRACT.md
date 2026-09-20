@@ -56,11 +56,15 @@ always read it from the file, never hard-code.
 ```jsonc
 { "arrival_min_b64": "...",
   "buildings_hit": [ids],
-  "stats": {"buildings_total":N,"buildings_hit":N,"minutes_to_town_center":N} }
+  "stats": {"buildings_total":N,"buildings_hit":N,"minutes_to_town_center":N,
+            "minutes_to_town":N,"minutes_to_first_home":N} }
 ```
 
 The fire with $0 spent. `buildings_hit` are ids of buildings whose cell is reached
-within `horizon_min`.
+within `horizon_min`. `minutes_to_town` = first arrival at the town center (same
+value as `minutes_to_town_center`, kept for compatibility); `minutes_to_first_home`
+= earliest arrival at any building cell. These may exceed `horizon_min` (the grid
+caps at 65535 but stats report the true model time).
 
 ## solutions.json
 
@@ -72,8 +76,14 @@ One entry per budget in `meta.budgets`, same ascending order:
                feature properties {id, cells, cost, fuel_group}>,
     "arrival_min_b64":"...",
     "buildings_hit":[ids],
-    "stats": {"buildings_hit":N, "houses_saved":N, "cost_per_house_saved":N} } ]
+    "stats": {"buildings_hit":N, "houses_saved":N, "cost_per_house_saved":N,
+              "minutes_to_town":N, "minutes_to_first_home":N,
+              "minutes_bought_town":N, "minutes_bought_first_home":N} } ]
 ```
+
+`minutes_bought_town` / `minutes_bought_first_home` = this solution's arrival time
+minus baseline's — the evacuation minutes the money buys. `cost_per_house_saved`
+is null when houses_saved is 0.
 
 `cost` ≤ `budget` (the solver spends what's worth spending). `houses_saved` =
 baseline `buildings_hit` − this entry's `buildings_hit`. Each budget's solution is the
@@ -87,6 +97,35 @@ Every greedy step, in acceptance order:
 ```jsonc
 { "points": [ {"step":i, "break_id":..., "cumulative_cost":N, "cumulative_saved":N} ] }
 ```
+
+## steps.json
+
+For the continuous budget slider: one entry per accepted greedy step, in
+acceptance order, plus step 0 = baseline ($0, no breaks):
+
+```jsonc
+[ { "step": 0, "break_ids": [], "cumulative_cost": 0, "cumulative_saved": 0,
+    "minutes_to_first_home": N, "minutes_to_town": N, "minutes_bought": 0,
+    "arrival_b64": "<uint8 grid, see below>" },
+  { "step": k, "break_ids": [ids added at this step], "cumulative_cost": N,
+    "cumulative_saved": N, "minutes_to_first_home": N, "minutes_to_town": N,
+    "minutes_bought": N, "arrival_b64": "..." } ]
+```
+
+- `arrival_b64` here is **uint8 in 5-minute buckets** (not uint16): minutes ≈
+  value × 5; **255 = never reached within the horizon**. Exactly rows × cols
+  values, row-major, top row north — same orientation as the uint16 grids, one
+  byte per cell (`bytes[i]`, no DataView needed).
+- `minutes_bought` = this step's `minutes_to_town` − baseline's (0 at step 0).
+- The fire at cumulative_cost k = draw breaks of steps 1..k together and use
+  step k's arrival grid.
+
+## breaks.geojson
+
+FeatureCollection of **every** break polygon the solver ever accepted, properties
+`{id, step, cells, cost, fuel_group}`. At slider step k, draw features with
+`step <= k`. (solutions.json still embeds per-budget FeatureCollections for the
+five snap budgets — unchanged.)
 
 ## buildings.geojson
 
@@ -112,5 +151,8 @@ Colors used in `basemap.png` fuel tinting, for the legend UI.
 ## File inventory
 
 `web/data/` (and `web/mock/`) contains exactly: `meta.json`, `baseline.json`,
-`solutions.json`, `curve.json`, `buildings.geojson`, `basemap.png`,
-`fuel_legend.json`. Total for `web/data/` stays ≤ 5 MB (enforced by the exporter).
+`solutions.json`, `curve.json`, `steps.json`, `breaks.geojson`,
+`buildings.geojson`, `basemap.png`, `fuel_legend.json`. Total for `web/data/`
+stays ≤ 20 MB (enforced by the exporter; served from localhost — the old 5 MB cap
+was for cloning). `web/mock/` predates `steps.json`/`breaks.geojson`; the page
+must degrade to the five snap budgets when they are absent.

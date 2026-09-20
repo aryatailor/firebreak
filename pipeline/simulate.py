@@ -50,6 +50,7 @@ class Simulator:
         self.elev = np.load(out / "elev.npy")
         b = np.load(out / "buildings.npz")
         self.b_row, self.b_col = b["row"], b["col"]
+        self.b_lat, self.b_lon = b["lat"], b["lon"]
         self.geom = {"west_m": self.gm["bounds_3857"]["west_m"],
                      "north_m": self.gm["bounds_3857"]["north_m"],
                      "cell_merc": self.gm["cell_merc"]}

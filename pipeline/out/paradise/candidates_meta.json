@@ -1,0 +1,11 @@
+{
+  "count": 4774,
+  "strips": 4437,
+  "arcs": 337,
+  "cells_median": 40,
+  "cost_min": 10680,
+  "cost_median": 68085,
+  "cost_max": 146850,
+  "corridor_cells": 84864,
+  "generated": "2026-09-19T22:24:02"
+}
