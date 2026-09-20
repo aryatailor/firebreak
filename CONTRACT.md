@@ -148,6 +148,20 @@ cell.
 
 Colors used in `basemap.png` fuel tinting, for the legend UI.
 
+## sensitivity.json (optional)
+
+May be absent — the page must not require it. Wind sensitivity of the shipped
+solutions: the exact break sets re-simulated under wind variants, homes_saved
+measured against the **same-variant** baseline (baselines differ per wind):
+
+```jsonc
+[ {"budget":500000, "wind_from_deg":30, "wind_mph":25,
+   "homes_saved":N, "minutes_bought":N}, ... ]
+```
+
+The calibrated wind appears as one of the entries. `minutes_bought` is the
+town-center arrival delta vs the same-variant baseline.
+
 ## web/towns/index.json
 
 The town selector. An array, one entry per available town, in display order:

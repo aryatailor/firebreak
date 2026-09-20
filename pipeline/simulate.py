@@ -73,13 +73,15 @@ class Simulator:
               f"nearest passable {rr[k]},{cc[k]}")
         return int(rr[k]), int(cc[k])
 
-    def arrival(self, params: dict, break_mask: np.ndarray | None = None) -> np.ndarray:
-        """Minutes from ignition to every cell (float, inf = unreachable)."""
+    def arrival(self, params: dict, break_mask: np.ndarray | None = None,
+                wind: dict | None = None) -> np.ndarray:
+        """Minutes from ignition to every cell (float, inf = unreachable).
+        wind overrides the town's historical wind (sensitivity runs only)."""
         t0 = time.perf_counter()
         rate = ros.base_rate(self.fuel, params)
         if break_mask is not None:
             rate = rate * np.where(break_mask, params["break_mult"], 1.0).astype(np.float32)
-        wf = ros.wind_factors(self.cfg["wind"], params["k_w"])
+        wf = ros.wind_factors(wind or self.cfg["wind"], params["k_w"])
         planes = ros.edge_times(rate, self.slope, wf, self.cell_m, params["scale"])
 
         i_parts, j_parts, t_parts = [], [], []

@@ -86,6 +86,29 @@ sequence, so bigger budgets visibly contain smaller ones on the slider.
 5. Fuels are the newest pre-fire LANDFIRE vintage, resampled to a 60 m grid;
    evacuation minutes are model arrival-time deltas, not traffic modeling.
 
+## Robustness — "what if the wind was different?"
+
+The shipped Paradise breaks (optimized for 35 mph from 45°) re-simulated under 9
+wind variants; homes saved is against the same-variant baseline
+(`pipeline/sensitivity.py`, full data in `web/data/sensitivity.json`):
+
+| Wind | Baseline hit | $500k saved / +min | $1M saved / +min | $2M saved / +min |
+|---|---|---|---|---|
+| 30° @ 25 mph | 2,524 | 1,107 / +213 | 1,136 / +318 | 1,140 / +430 |
+| 30° @ 35 mph | 5,095 | 2,822 / +199 | 2,951 / +298 | 2,996 / +406 |
+| 30° @ 45 mph | 7,715 | 2,871 / +162 | 3,788 / +245 | 4,672 / +354 |
+| 45° @ 25 mph | 4,124 | 2,030 / +187 | 2,162 / +243 | 2,170 / +330 |
+| **45° @ 35 mph (calibrated)** | 7,765 | 2,515 / +153 | 3,610 / +206 | 4,663 / +282 |
+| 45° @ 45 mph | 10,100 | 1,113 / +124 | 1,816 / +171 | 2,696 / +237 |
+| 60° @ 25 mph | 5,278 | 2,185 / +167 | 2,998 / +198 | 3,072 / +269 |
+| 60° @ 35 mph | 9,521 | 1,903 / +143 | 2,604 / +163 | 3,699 / +222 |
+| 60° @ 45 mph | 10,536 | 61 / +119 | 97 / +136 | 305 / +183 |
+
+Honestly: the breaks buy meaningful evacuation time under every wind we tested
+(+2 to +7 hours), but homes-saved collapses in the worst case — a stronger wind
+from a direction the plan wasn't optimized for (60° @ 45 mph) routes the fire
+around the breaks, and only the time bought survives.
+
 ## Run it
 
 ```
