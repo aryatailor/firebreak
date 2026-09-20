@@ -613,7 +613,6 @@ async function main() {
   const maxBudget = meta.budgets[meta.budgets.length - 1];
 
   $('story').textContent = meta.story;
-  $('intro-story').textContent = meta.story;
   $('legend').innerHTML = legend.map(g =>
     `<span class="chip"><i style="background:${g.color}"></i>${g.group}</span>`).join('');
   $('simp-list').innerHTML = meta.simplifications.map(s => `<li>${s}</li>`).join('');
@@ -947,7 +946,7 @@ async function main() {
 
 main().catch(err => {
   $('story').textContent = `FAILED to load web/${DATA_DIR}/ — ${err.message}`;
-  const is = $('intro-story');
-  if (is) is.textContent = `FAILED to load web/${DATA_DIR}/ — ${err.message}`;
+  const ir = $('intro-run');
+  if (ir) ir.textContent = `FAILED: ${err.message}`;
   console.error(err);
 });
