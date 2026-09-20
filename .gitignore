@@ -1,0 +1,7 @@
+pipeline/data_raw/
+*.tif
+*.zip
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

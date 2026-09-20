@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firebreak</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h1>Firebreak</h1>
+  <p id="story">loading…</p>
+  <div id="stats">
+    <div>Buildings hit: <span id="stat-hit">–</span></div>
+    <div>Spent: <span id="stat-spent">–</span></div>
+    <div>Houses saved: <span id="stat-saved">–</span></div>
+  </div>
+  <label>Budget
+    <select id="budget"></select>
+  </label>
+  <label>Time <span id="time-label">0 min</span>
+    <input id="time" type="range" min="0" max="720" value="0" step="5">
+  </label>
+  <button id="play" type="button">Play</button>
+  <p class="note">Skeleton only — zero styling on purpose; DESIGN.md is the real spec.
+     Data: <code id="data-dir"></code> (see CONTRACT.md).</p>
+</div>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
