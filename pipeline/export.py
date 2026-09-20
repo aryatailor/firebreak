@@ -144,10 +144,16 @@ def build_prefix_plan(sim: Simulator, params: dict, base_stats: dict,
             sim, base_stats, step, [item["id"]], item["cum_cost"],
             item["cum_saved"], arr, horizon, include_arrival
         ))
+        properties = {
+            "id": item["id"], "step": step, "cells": item["cells"],
+            "cost": round(item["cost"]),
+            "fuel_group": dominant_group(sim, rr, cc),
+        }
+        if not include_arrival:
+            properties["cell_idx"] = sorted((rr * sim.cols + cc).tolist())
+            properties["cells"] = len(properties["cell_idx"])
         break_features.append(cells_to_geojson_feature(
-            sim, rr, cc,
-            {"id": item["id"], "step": step, "cells": item["cells"],
-             "cost": round(item["cost"]), "fuel_group": dominant_group(sim, rr, cc)}
+            sim, rr, cc, properties
         ))
         prefix_masks.append((float(item["cum_cost"]), mask.copy()))
     return steps, {"type": "FeatureCollection", "features": break_features}, prefix_masks
@@ -184,7 +190,7 @@ def score_prefixes(town: str, params: dict, scenarios: list[dict],
     return scored
 
 
-def run(town: str) -> None:
+def _load_prefix_inputs(town: str):
     cfg = common.load_town(town)
     out = common.out_dir(town)
     sim = Simulator(town)
@@ -197,21 +203,57 @@ def run(town: str) -> None:
     z = np.load(out / "candidates.npz")
     cand_cells = {int(i): (z["flat_r"][s:s + n], z["flat_c"][s:s + n])
                   for i, (s, n) in enumerate(zip(z["starts"], z["lengths"]))}
+    base_arr = sim.arrival(params)
+    bs = sim.stats(base_arr)
+    base_stats = {
+        "buildings_total": bs["homes_total"],
+        "buildings_hit": int(np.count_nonzero(
+            base_arr[sim.b_row, sim.b_col] <= horizon
+        )),
+        "minutes_to_town_center": bs["minutes_to_town_center"],
+        "minutes_to_town": bs["minutes_to_town_center"],
+        "minutes_to_first_home": bs["minutes_to_first_home"],
+    }
+    return (cfg, out, sim, horizon, config, params, gm, solve, cand_cells,
+            base_arr, base_stats)
+
+
+def run_historical_plan_only(town: str) -> None:
+    (cfg, out, sim, horizon, _config, params, _gm, _solve, cand_cells,
+     base_arr, base_stats) = _load_prefix_inputs(town)
+    single_path = out / "solve_result_single.json"
+    if not single_path.exists():
+        raise FileNotFoundError(f"missing {single_path}")
+    single = json.loads(single_path.read_text(encoding="utf-8"))
+    historical_steps, historical_breaks, _ = build_prefix_plan(
+        sim, params, base_stats, base_arr, single["accepted"], cand_cells,
+        horizon, include_arrival=False
+    )
+    web = common.web_dir(cfg)
+    plan_historical = {"steps": historical_steps, "breaks": historical_breaks}
+    (web / "plan_historical.json").write_text(
+        json.dumps(plan_historical, separators=(",", ":")), encoding="utf-8"
+    )
+    total = sum(f.stat().st_size for f in web.iterdir()) / 1e6
+    size = (web / "plan_historical.json").stat().st_size / 1e6
+    print(f"  plan_historical.json: {size:.3f} MB")
+    if total > common.SIZE_CAP_MB:
+        raise SystemExit(
+            f"{web} is {total:.2f} MB > {common.SIZE_CAP_MB:.0f} MB"
+        )
+    print(f"historical plan OK: {web} total = {total:.2f} MB <= "
+          f"{common.SIZE_CAP_MB:.0f} MB")
+
+
+def run(town: str) -> None:
+    (cfg, out, sim, horizon, config, params, gm, solve, cand_cells,
+     base_arr, base_stats) = _load_prefix_inputs(town)
 
     web = common.web_dir(cfg)
     print(f"  export target: {web}")
 
     # --- baseline ---------------------------------------------------------------
-    base_arr = sim.arrival(params)
-    bs = sim.stats(base_arr)
     base_hit_ids = np.nonzero(base_arr[sim.b_row, sim.b_col] <= horizon)[0]
-    base_stats = {
-        "buildings_total": bs["homes_total"],
-        "buildings_hit": int(base_hit_ids.size),
-        "minutes_to_town_center": bs["minutes_to_town_center"],
-        "minutes_to_town": bs["minutes_to_town_center"],
-        "minutes_to_first_home": bs["minutes_to_first_home"],
-    }
     baseline = {"arrival_min_b64": b64_grid(base_arr, horizon),
                 "buildings_hit": base_hit_ids.tolist(), "stats": base_stats}
 
@@ -388,12 +430,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Write web/data/ per CONTRACT.md; enforce the 5 MB budget.")
     p.add_argument("--town", default="paradise",
                    help="name of towns/<town>.json (default: paradise)")
+    p.add_argument("--historical-plan-only", action="store_true",
+                   help="rewrite only plan_historical.json from cached results")
     return p
 
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
-    common.run_stage("export", args.town, lambda: run(args.town))
+    fn = (run_historical_plan_only if args.historical_plan_only else run)
+    common.run_stage("export", args.town, lambda: fn(args.town))
 
 
 if __name__ == "__main__":

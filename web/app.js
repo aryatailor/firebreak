@@ -390,6 +390,11 @@ function rasterizeBreaks(breaksFC, meta) {
     return inside;
   };
   const breaks = breaksFC.features.map((ft, bi) => {
+    if (Array.isArray(ft.properties.cell_idx)) {
+      const cells = ft.properties.cell_idx;
+      for (const i of cells) cellBreak[i] = bi;
+      return { props: ft.properties, step: ft.properties.step ?? bi + 1, cells };
+    }
     const ring = ft.geometry.coordinates[0].map(([lon, lat]) => [lonToCol(lon), latToRow(lat)]);
     let c0 = Infinity, c1 = -Infinity, r0 = Infinity, r1 = -Infinity;
     for (const [x, y] of ring) {
@@ -615,6 +620,11 @@ async function loadPlans() {
     return { plans: { robust: model }, order: ['robust'], nScenarios: 0 };
   }
   const expected = steps => steps.map(s => s.mean_saved);
+  // steps.json for the robust plan carries the ensemble mean; the panel's
+  // "historical fire" number is scenario 0 (historical ignition, calibrated wind).
+  robust.steps.forEach((s, i) => {
+    if (model.steps[i]) model.steps[i].saved = s.per_scenario_saved[0];
+  });
   let cum = 0;
   const histSteps = histPlan.steps.map(s => {
     cum += (s.break_ids || []).length;
@@ -1148,7 +1158,10 @@ async function main() {
     $('plan-note').textContent = planNotes[id];
     state.t = 0; timeEl.value = '0';
     setBudgetValue(state.budget, true);
-    if (flow === 'done' || flow === 'burn1') setWalk('done');
+    if (flow === 'done' || flow === 'burn1') {
+      setWalk('pick');
+      setCaption('Different breaks on the map now — run the fire again to see what they do.', 'Run it again →');
+    }
   }
   if (hasPlans && plans.historical) {
     $('plan-block').hidden = false;

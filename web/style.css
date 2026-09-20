@@ -46,6 +46,7 @@ button { font-family: inherit; }
 #town-select[hidden] { display: none; }
 body.intro #town-select { display: none; }
 body.has-towns #caption { top: 58px; }
+body.has-towns .leaflet-top.leaflet-left { top: 44px; }
 
 /* walkthrough caption card: top-left over the map */
 #caption {

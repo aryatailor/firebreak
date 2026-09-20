@@ -90,6 +90,12 @@ def test_historical_plan_shape():
     assert [feature["properties"]["id"] for feature in breaks["features"]] == [
         item["id"] for item in single["accepted"][:2]
     ]
+    for feature, item in zip(breaks["features"], single["accepted"][:2]):
+        props = feature["properties"]
+        assert "cell_idx" in props
+        assert props["cell_idx"]
+        assert len(props["cell_idx"]) == props["cells"]
+        assert all(0 <= i < sim.rows * sim.cols for i in props["cell_idx"])
     assert solve["objective"] == "ensemble"
 
 
