@@ -33,61 +33,52 @@
     <p id="story">loading…</p>
   </header>
 
-  <section id="stats" aria-live="polite">
-    <div class="stat">
-      <div class="stat-value mono" id="stat-1">–</div>
-      <div class="stat-label mono" id="stat-1-label">homes hit</div>
-    </div>
-    <div class="stat">
-      <div class="stat-value mono" id="stat-2">–</div>
-      <div class="stat-label mono" id="stat-2-label">spent</div>
-    </div>
-    <div class="stat">
-      <div class="stat-value mono" id="stat-3">–</div>
-      <div class="stat-label mono" id="stat-3-label">homes saved</div>
-    </div>
+  <section class="control" id="budget-block">
+    <div class="control-head"><label class="mono" for="budget">01 — Budget</label></div>
+    <input id="budget" type="range" min="0" max="5000000" step="10000" value="0">
+    <div class="ticks mono" id="budget-ticks"></div>
+    <div id="budget-readout" class="mono">$0 · 0 breaks · 0 homes saved · 0 min bought</div>
   </section>
 
-  <section id="homes">
-    <div class="control-head"><label class="mono" id="homes-label">01 — Homes</label><span class="control-value mono" id="waffle-caption"></span></div>
+  <section id="saved-block" aria-live="polite">
+    <div class="control-head"><label class="mono" id="homes-label">02 — Homes saved</label><span class="control-value mono" id="waffle-caption"></span></div>
+    <div class="stat-value mono" id="stat-saved">0</div>
     <canvas id="waffle"></canvas>
     <div id="waffle-legend" class="mono">
       <span><i class="sw sw-grey"></i>STANDING</span>
       <span><i class="sw sw-red"></i>BURNED</span>
       <span><i class="sw sw-saved"></i>SAVED</span>
     </div>
+    <p id="stat-line" class="mono">SPENT $0 &#183; +0 MIN EVACUATION</p>
   </section>
 
-  <section class="control" id="budget-block">
-    <div class="control-head"><label class="mono" for="budget">02 — Budget</label></div>
-    <input id="budget" type="range" min="0" max="5000000" step="10000" value="0">
-    <div class="ticks mono" id="budget-ticks"></div>
-    <div id="budget-readout" class="mono">$0 · 0 breaks · 0 homes saved · 0 min bought</div>
-  </section>
+  <details id="more">
+    <summary class="mono">More &#9656;</summary>
 
-  <section class="control" id="time-block">
-    <div class="control-head"><label class="mono" for="time">03 — Timeline</label><span class="control-value mono" id="time-label">0h 00m</span></div>
-    <div class="time-row">
-      <button id="play" type="button" class="mono" aria-label="Play">&#9654;&#xFE0E;</button>
-      <input id="time" type="range" min="0" max="720" step="5" value="0">
-    </div>
-  </section>
+    <section class="control" id="time-block">
+      <div class="control-head"><label class="mono" for="time">03 — Timeline</label><span class="control-value mono" id="time-label">0h 00m</span></div>
+      <div class="time-row">
+        <button id="play" type="button" class="mono" aria-label="Play">&#9654;&#xFE0E;</button>
+        <input id="time" type="range" min="0" max="720" step="5" value="0">
+      </div>
+    </section>
 
-  <details id="explore">
-    <summary class="mono">04 — Budget &#8594; homes saved</summary>
-    <p id="curve-sentence" class="mono"></p>
-    <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative homes saved"></svg>
+    <details id="explore">
+      <summary class="mono">04 — Budget &#8594; homes saved</summary>
+      <p id="curve-sentence" class="mono"></p>
+      <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative homes saved"></svg>
+    </details>
+
+    <details id="simplifications">
+      <summary class="mono">05 — Real vs simplified</summary>
+      <ul id="simp-list"></ul>
+    </details>
+
+    <footer>
+      <span id="basemap-status" class="mono">…</span>
+      <button id="sound" type="button" class="mono">SOUND OFF</button>
+    </footer>
   </details>
-
-  <details id="simplifications">
-    <summary class="mono">05 — Real vs simplified</summary>
-    <ul id="simp-list"></ul>
-  </details>
-
-  <footer>
-    <span id="basemap-status" class="mono">…</span>
-    <button id="sound" type="button" class="mono">SOUND OFF</button>
-  </footer>
 </aside>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>

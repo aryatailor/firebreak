@@ -61,14 +61,17 @@ body.intro #caption, body.intro #point-arrow { display: none; }
 #point-arrow[hidden] { display: none; }
 @keyframes nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(8px); } }
 
-/* big numbers — no cards, hairlines between rows */
-#stats { display: flex; flex-direction: column; }
-.stat { padding: 7px 0 8px; border-top: 1px solid var(--line); }
-.stat-value { font-size: 40px; font-weight: 300; line-height: 1.05; letter-spacing: -.01em; }
-.stat-label {
-  margin-top: 2px; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .12em; color: var(--muted);
+/* the one big number — no cards, hairlines only */
+.stat-value { font-size: 40px; font-weight: 300; line-height: 1.1; letter-spacing: -.01em; margin: 4px 0 2px; }
+#saved-block { border-top: 1px solid var(--line); padding-top: 11px; }
+#stat-line { margin: 9px 0 0; font-size: 10.5px; color: var(--muted); letter-spacing: .08em; }
+#more { border-top: 1px solid var(--line); padding-top: 11px; }
+#more > summary {
+  cursor: pointer; color: var(--muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .12em;
 }
+#more > section, #more > details { margin-top: 13px; }
+#more footer { margin-top: 13px; }
 
 /* section labels: 01 / 02 / 03 … */
 .control-head {
@@ -141,8 +144,6 @@ body:not([data-flow="free"]) #time-block,
 body:not([data-flow="free"]) #explore {
   opacity: .35; pointer-events: none;
 }
-body[data-flow="armed"] .stat:nth-child(2), body[data-flow="armed"] .stat:nth-child(3),
-body[data-flow="burn0"] .stat:nth-child(2), body[data-flow="burn0"] .stat:nth-child(3) { opacity: .4; }
 
 /* curve (inline SVG): 1 px line, dotted grid, no fill */
 #curve { width: 100%; height: auto; display: block; margin-top: 8px; }

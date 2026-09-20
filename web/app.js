@@ -682,7 +682,7 @@ async function main() {
     fx[i] = (lon - b.west) / (b.east - b.west);
     fy[i] = (yN - merc(lat)) / (yN - yS);
   });
-  $('homes-label').textContent = `01 — Homes (${nB.toLocaleString()})`;
+  $('homes-label').textContent = `02 — Homes saved (of ${nB.toLocaleString()})`;
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
   const houses = new HousesLayer(bounds, fx, fy, states, { pane: 'houses' }).addTo(map);
@@ -746,15 +746,9 @@ async function main() {
   const fmtInt = n => n.toLocaleString();
   function updateStats() {
     const st = model.steps[state.step];
-    if (flow === 'burn1' || flow === 'done') {
-      setNum($('stat-1'), lastCounts.saved, fmtInt);
-      setNum($('stat-2'), st.minutesBought || 0, n => `${n} min`);
-      setNum($('stat-3'), st.cost, fmtMoney);
-    } else {
-      setNum($('stat-1'), lastCounts.hit, fmtInt);
-      setNum($('stat-2'), st.cost, fmtMoney);
-      setNum($('stat-3'), lastCounts.saved, fmtInt);
-    }
+    setNum($('stat-saved'), lastCounts.saved, fmtInt);
+    const mb = st.minutesBought == null ? '—' : `+${st.minutesBought}`;
+    $('stat-line').textContent = `SPENT ${fmtMoney(st.cost)} · ${mb} MIN EVACUATION`;
   }
 
   function render() {
@@ -896,12 +890,6 @@ async function main() {
   function setWalk(f) {
     flow = f;
     document.body.dataset.flow = f;
-    const cLabels = f === 'burn1' || f === 'done'
-      ? ['homes saved', 'evacuation time bought', 'spent']
-      : ['homes hit', 'spent', 'homes saved'];
-    ['stat-1-label', 'stat-2-label', 'stat-3-label'].forEach((id, i) => {
-      const el = $(id); if (el) el.textContent = cLabels[i];
-    });
     showGhost(f === 'burn1' || f === 'done');
     pointAtBudget(f === 'pick');
     if (f === 'armed') setCaption(openerLine, 'Watch it happen →');
