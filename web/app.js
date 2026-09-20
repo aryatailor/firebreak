@@ -540,7 +540,7 @@ function buildWaffle(total) {
   cv.style.width = `${COLS * CELL}px`; cv.style.height = `${rows * CELL}px`;
   const ctx = cv.getContext('2d');
   ctx.scale(dpr, dpr);
-  $('waffle-caption').textContent = `1 SQ = ${unit} ${unit === 1 ? 'HOME' : 'HOMES'}`;
+  $('waffle-caption').textContent = `1 square = ${unit} ${unit === 1 ? 'home' : 'homes'}`;
   return {
     draw(hitCount, savedCount) {
       const red = Math.min(n, Math.round(hitCount / unit));
@@ -602,6 +602,39 @@ async function loadModel() {
   }
 }
 
+/* Plans. The robust plan (steps.json, breaks.geojson) is the default. When the
+   pipeline ran with --robust it also ships plan_historical.json (the plan solved
+   for the historical fire only, no grids: the browser re-simulates them) and
+   robust.json (both plans scored across the ignition+wind ensemble). */
+async function loadPlans() {
+  const optional = name => loadJSON(name).catch(() => null);
+  const [model, robust, histPlan] = await Promise.all([
+    loadModel(), optional('robust.json'), optional('plan_historical.json'),
+  ]);
+  if (!robust || !histPlan || !robust.historical_plan) {
+    return { plans: { robust: model }, order: ['robust'], nScenarios: 0 };
+  }
+  const expected = steps => steps.map(s => s.mean_saved);
+  let cum = 0;
+  const histSteps = histPlan.steps.map(s => {
+    cum += (s.break_ids || []).length;
+    return {
+      cost: s.cumulative_cost, saved: s.cumulative_saved,
+      minutesBought: s.minutes_bought == null ? null : s.minutes_bought,
+      breakCount: cum, live: true,
+    };
+  });
+  return {
+    plans: {
+      robust: Object.assign(model, { expected: expected(robust.steps) }),
+      historical: { steps: histSteps, breaksFC: histPlan.breaks, dense: true,
+                    expected: expected(robust.historical_plan.steps) },
+    },
+    order: ['robust', 'historical'],
+    nScenarios: robust.scenarios.length,
+  };
+}
+
 async function main() {
   // Town selector (CONTRACT.md web/towns/index.json): >1 entries → dropdown;
   // missing file or a single entry → none. Selecting reloads with ?town=<id>.
@@ -629,9 +662,9 @@ async function main() {
   }
 
   const meta = await loadJSON('meta.json');
-  const [baseline, curve, buildingsFC, legend, model, physics] = await Promise.all([
+  const [baseline, curve, buildingsFC, legend, planSet, physics] = await Promise.all([
     loadJSON('baseline.json'), loadJSON('curve.json'),
-    loadJSON('buildings.geojson'), loadJSON('fuel_legend.json'), loadModel(),
+    loadJSON('buildings.geojson'), loadJSON('fuel_legend.json'), loadPlans(),
     // physics.json is optional: without it there is no what-if mode.
     loadJSON('physics.json').catch(err => { console.warn(`no physics.json (${err.message})`); return null; }),
   ]);
@@ -639,6 +672,15 @@ async function main() {
   const bounds = L.latLngBounds([b.south, b.west], [b.north, b.east]);
   const H = meta.horizon_min;
   const maxBudget = meta.budgets[meta.budgets.length - 1];
+
+  const { plans, nScenarios } = planSet;
+  let planId = 'robust';
+  let model = plans[planId];
+  const hasPlans = planSet.order.length > 1;
+  const planNotes = {
+    robust: `Chosen to save the most homes on average across many plausible ignition points and winds — not just the fire that happened.`,
+    historical: `Chosen for the historical ignition and wind only. Stronger on that fire, weaker when the fire starts somewhere else.`,
+  };
 
   $('story').textContent = meta.story;
   $('legend').innerHTML = legend.map(g =>
@@ -654,8 +696,8 @@ async function main() {
   let wind = { speed_mph: meta.wind.speed_mph, from_deg: meta.wind.from_deg };
   let basemapMode = '…';
   const statusBits = () => [
-    basemapMode, `DATA: ${DATA_DIR.toUpperCase()}`, `${meta.grid.cell_m} M CELLS`,
-    `WIND ${compass(wind.from_deg)} ${wind.speed_mph} MPH`,
+    basemapMode, `${meta.grid.cell_m} m cells`,
+    `wind ${compass(wind.from_deg)} ${wind.speed_mph} mph`,
   ].join(' · ');
   setupBasemap(map, bounds, mode => {
     basemapMode = mode;
@@ -678,7 +720,7 @@ async function main() {
     hx[i] = Math.min(W2 - 3, Math.max(1, Math.round(gx) - 1));
     hy[i] = Math.min(H2 - 3, Math.max(1, Math.round(gy) - 1));
   });
-  $('homes-label').textContent = `02 — Homes saved (of ${nB.toLocaleString()})`;
+  $('homes-label').textContent = hasPlans ? 'Expected homes saved' : `Homes saved (of ${nB.toLocaleString()})`;
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
   fire.setHomes(hx, hy, states);
@@ -694,7 +736,7 @@ async function main() {
   }).addTo(map);
 
   // Breaks → cells; mask marks active break cells, edge bits their outward rim.
-  const braster = rasterizeBreaks(model.breaksFC, meta);
+  let braster = rasterizeBreaks(model.breaksFC, meta);
   const breakMask = new Uint8Array(rows * cols);
   const breakEdge = new Uint8Array(rows * cols);   // bits: 1 N, 2 S, 4 W, 8 E
   fire.setBreaks(breakMask, braster.cellBreak, breakEdge);
@@ -725,6 +767,8 @@ async function main() {
   // What-if scenario: user-placed ignition and/or wind, simulated in the browser
   // (sim.js) against the shipped breaks. null = the historical, precomputed run.
   const sim = physics && window.FireSim ? new FireSim(physics) : null;
+  const histIgnCell = sim ? sim.cellOf(physics.ignition_rc[0], physics.ignition_rc[1]) : -1;
+  if (hasPlans && !sim) plans.historical = undefined;   // its grids need the browser sim
   let scenario = null;            // { cell, wind: {speed_mph, from_deg} }
   let scenGrids = [], scenStats = [];
   const firstHomeMin = grid => {
@@ -749,6 +793,10 @@ async function main() {
     if (s === 0) return baseGrid;
     if (stepGrids[s]) return stepGrids[s];
     const st = model.steps[s];
+    if (st.live) {   // plan shipped without grids: historical fire, simulated here
+      sim.setWind(meta.wind.speed_mph, meta.wind.from_deg);
+      return (stepGrids[s] = sim.toU16(sim.run(histIgnCell, breakMask)));
+    }
     return (stepGrids[s] = st.b64u8
       ? decodeStepGrid(st.b64u8, rows, cols, 5, 255)
       : decodeGrid(st.b64u16, rows, cols));
@@ -756,10 +804,14 @@ async function main() {
   // Per-step numbers: the solver's (historical run) or the live scenario's.
   const stepInfo = s => {
     const st = model.steps[s];
-    if (!scenario) return st;
+    const expected = model.expected ? model.expected[s] : null;
+    if (!scenario) return Object.assign({}, st, { expected });
     const sc = s === 0 ? { saved: 0, minutesBought: 0 } : scenStats[s];
-    return { cost: st.cost, breakCount: st.breakCount, saved: sc.saved, minutesBought: sc.minutesBought };
+    return { cost: st.cost, breakCount: st.breakCount, saved: sc.saved, minutesBought: sc.minutesBought, expected };
   };
+  const curvePoints = () => model.steps.slice(1).map((st, i) => ({
+    cumulative_cost: st.cost, cumulative_saved: model.expected ? Math.round(model.expected[i + 1]) : st.saved,
+  }));
   const stepForBudget = v => {
     let s = 0;
     for (let i = 0; i < model.steps.length; i++) {
@@ -768,7 +820,7 @@ async function main() {
     return s;
   };
 
-  const chart = buildCurve(curve.points);
+  let chart = buildCurve(curvePoints());
   const waffle = buildWaffle(nB);
   const audio = makeAudio();
   const state = { t: 0, budget: 0, step: 0, arrival: baseGrid };
@@ -779,9 +831,17 @@ async function main() {
   const fmtInt = n => n.toLocaleString();
   function updateStats() {
     const st = stepInfo(state.step);
-    setNum($('stat-saved'), lastCounts.saved, fmtInt);
     const mb = st.minutesBought == null ? '—' : `+${Math.round(st.minutesBought)}`;
-    $('stat-line').textContent = `SPENT ${fmtMoney(st.cost)} · ${mb} MIN EVACUATION`;
+    if (st.expected != null) {
+      setNum($('stat-saved'), Math.round(st.expected), fmtInt);
+      $('stat-sub').textContent = `on average, across ${nScenarios} plausible fires · of ${nB.toLocaleString()} homes`;
+      $('stat-line').textContent =
+        `${scenario ? 'This fire' : 'The historical fire'}: ${st.saved.toLocaleString()} saved · ${mb} min evacuation · ${fmtMoney(st.cost)} spent`;
+    } else {
+      setNum($('stat-saved'), lastCounts.saved, fmtInt);
+      $('stat-sub').textContent = '';
+      $('stat-line').textContent = `Spent ${fmtMoney(st.cost)} · ${mb} min evacuation`;
+    }
   }
 
   function render() {
@@ -807,8 +867,9 @@ async function main() {
   function updateReadout() {
     const st = stepInfo(state.step);
     const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
+    $('budget-value').textContent = fmtM2(state.budget);
     $('budget-readout').textContent =
-      `${fmtM2(state.budget)} · ${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ` +
+      `${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ${fmtMoney(st.cost)} spent · ` +
       `${st.saved.toLocaleString()} homes saved · ${mb} min bought`;
   }
 
@@ -820,8 +881,9 @@ async function main() {
       rebuildBreakMask(s);
       state.arrival = gridForStep(s);
       const st = stepInfo(s);
-      chart.mark(st.cost, st.saved,
-        s > 0 ? `${fmtMoney(st.cost)} saves ${st.saved} homes`
+      const y = st.expected != null ? Math.round(st.expected) : st.saved;
+      chart.mark(st.cost, y,
+        s > 0 ? `${fmtMoney(st.cost)} saves ${y.toLocaleString()} homes${st.expected != null ? ' on average' : ''}`
               : '$0 saves 0 homes — move the budget slider');
       render();
     }
@@ -838,7 +900,7 @@ async function main() {
   budgetEl.max = String(maxBudget);
   budgetEl.step = '10000';
   $('budget-ticks').innerHTML = [0, ...meta.budgets].map(v =>
-    `<span style="left:${(v / maxBudget) * 100}%">${fmtMoney(v)}</span>`).join('');
+    `<span style="left:${(v / maxBudget) * 100}%">${v ? fmtMoney(v) : ''}</span>`).join('');
   let budgetRaf = 0;
   budgetEl.oninput = () => {
     if (!budgetRaf) {
@@ -884,7 +946,7 @@ async function main() {
   // Sound toggle — never throws; first click may lazily create the context.
   const soundEl = $('sound');
   const soundLabel = () =>
-    { soundEl.textContent = audio.isActive() && !audio.isMuted() ? 'SOUND ON' : 'SOUND OFF'; };
+    { soundEl.textContent = audio.isActive() && !audio.isMuted() ? 'Sound on' : 'Sound off'; };
   soundEl.onclick = () => {
     if (!audio.isActive()) audio.start(); else audio.toggleMute();
     soundLabel();
@@ -972,9 +1034,9 @@ async function main() {
   function scenarioLine() {
     const where = scenario && scenario.cell !== histIgnCell ? 'your ignition point' : meta.ignition.label.split(' (')[0];
     return `A fire from ${where}, wind ${wind.speed_mph} mph from the ${compass(wind.from_deg)}. ` +
-      `Breaks are the ones the solver bought for the historical fire at this budget.`;
+      (planId === 'historical' ? 'Breaks are the ones bought for the historical fire at this budget.'
+                                : 'Breaks are the ones bought for any plausible fire at this budget.');
   }
-  const histIgnCell = sim ? sim.cellOf(physics.ignition_rc[0], physics.ignition_rc[1]) : -1;
   const isHistWind = () => wind.speed_mph === meta.wind.speed_mph && wind.from_deg === meta.wind.from_deg;
   function windLabels() {
     $('wind-speed-label').textContent = `${wind.speed_mph} mph`;
@@ -1066,10 +1128,36 @@ async function main() {
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && picking) setPicking(false); });
   }
 
-  // --- break hover: cell → active break → green highlight + mono tooltip ---
+  // --- plan toggle: robust (default) vs historical-only breaks ---
+  const savedByStep = () => model.steps.map((st, i) =>
+    i === 0 ? 0 : Math.round((model.expected ? model.expected[i] - model.expected[i - 1]
+                                             : st.saved - model.steps[i - 1].saved)));
+  let stepSaved = savedByStep();
+  function setPlan(id) {
+    if (!plans[id] || id === planId) return;
+    if (timer) stopPlay();
+    planId = id; model = plans[id];
+    braster = rasterizeBreaks(model.breaksFC, meta);
+    fire.setBreaks(breakMask, braster.cellBreak, breakEdge);
+    stepGrids.length = 0; scenGrids = []; scenStats = [];
+    chart = buildCurve(curvePoints());
+    stepSaved = savedByStep();
+    for (const btn of $('plan-toggle').children) {
+      btn.setAttribute('aria-selected', String(btn.dataset.plan === id));
+    }
+    $('plan-note').textContent = planNotes[id];
+    state.t = 0; timeEl.value = '0';
+    setBudgetValue(state.budget, true);
+    if (flow === 'done' || flow === 'burn1') setWalk('done');
+  }
+  if (hasPlans && plans.historical) {
+    $('plan-block').hidden = false;
+    $('plan-note').textContent = planNotes[planId];
+    for (const btn of $('plan-toggle').children) btn.onclick = () => setPlan(btn.dataset.plan);
+  }
+
+  // --- break hover: cell → active break → green highlight + tooltip ---
   const tip = $('break-tip');
-  const savedByBreak = new Map(curve.points.map((p, i) =>
-    [p.break_id, p.cumulative_saved - (i > 0 ? curve.points[i - 1].cumulative_saved : 0)]));
   let hoverBi = -1;
   map.on('mousemove', e => {
     const fyF = (yN - merc(e.latlng.lat)) / (yN - yS);
@@ -1089,8 +1177,8 @@ async function main() {
     if (bi >= 0) {
       const bk = braster.breaks[bi];
       tip.textContent =
-        `BREAK ${bk.props.id} · STEP ${bk.step} · ${fmtMoney(bk.props.cost)} · ` +
-        `${savedByBreak.get(bk.props.id) ?? '—'} HOMES PROTECTED`;
+        `Break ${bk.props.id} · #${bk.step} · ${fmtMoney(bk.props.cost)} · ` +
+        `+${stepSaved[bk.step] ?? '—'} homes${model.expected ? ' on average' : ''}`;
       tip.style.left = `${e.containerPoint.x + 14}px`;
       tip.style.top = `${e.containerPoint.y + 14}px`;
     }

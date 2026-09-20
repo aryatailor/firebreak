@@ -10,86 +10,98 @@
 <body class="intro" data-flow="armed">
 <div id="map"></div>
 <div id="legend" hidden></div>
-<div id="break-tip" class="mono" hidden></div>
+<div id="break-tip" hidden></div>
 
-<select id="town-select" class="mono" hidden></select>
-<div id="caption" class="mono" hidden>
+<select id="town-select" hidden></select>
+<div id="caption" hidden>
   <p id="caption-text"></p>
   <button id="caption-btn" type="button" hidden></button>
   <button id="caption-skip" type="button">Skip &#183; free play</button>
 </div>
-<div id="point-arrow" class="mono" hidden>&#10230;</div>
+<div id="point-arrow" hidden>&#10230;</div>
 
 <div id="intro">
   <div id="intro-inner">
-    <h1>FIREBREAK</h1>
+    <p class="eyebrow">Fuel-break optimizer on real terrain</p>
+    <h1>Firebreak</h1>
+    <p id="intro-sub">Where to cut to stop a wildfire, per dollar — tested against the fire that happened and the fires that could.</p>
     <button id="intro-run" type="button">Enter</button>
   </div>
 </div>
 
 <aside id="panel">
   <header>
-    <h1>FIREBREAK</h1>
+    <div class="brand"><span class="brand-mark"></span><h1>Firebreak</h1></div>
     <p id="story">loading…</p>
   </header>
 
+  <section class="control" id="plan-block" hidden>
+    <div class="control-head"><label>Breaks optimized for</label></div>
+    <div id="plan-toggle" class="seg" role="tablist">
+      <button type="button" role="tab" data-plan="robust" aria-selected="true">Any plausible fire</button>
+      <button type="button" role="tab" data-plan="historical" aria-selected="false">The historical fire</button>
+    </div>
+    <p id="plan-note"></p>
+  </section>
+
   <section class="control" id="budget-block">
-    <div class="control-head"><label class="mono" for="budget">01 — Budget</label></div>
+    <div class="control-head"><label for="budget">Budget</label><span class="control-value" id="budget-value">$0</span></div>
     <input id="budget" type="range" min="0" max="5000000" step="10000" value="0">
-    <div class="ticks mono" id="budget-ticks"></div>
-    <div id="budget-readout" class="mono">$0 · 0 breaks · 0 homes saved · 0 min bought</div>
+    <div class="ticks" id="budget-ticks"></div>
+    <div id="budget-readout">0 breaks · 0 homes saved · 0 min bought</div>
   </section>
 
   <section id="saved-block" aria-live="polite">
-    <div class="control-head"><label class="mono" id="homes-label">02 — Homes saved</label><span class="control-value mono" id="waffle-caption"></span></div>
-    <div class="stat-value mono" id="stat-saved">0</div>
+    <div class="control-head"><label id="homes-label">Homes saved</label><span class="control-value" id="waffle-caption"></span></div>
+    <div class="stat-value" id="stat-saved">0</div>
+    <p id="stat-sub"></p>
     <canvas id="waffle"></canvas>
-    <div id="waffle-legend" class="mono">
-      <span><i class="sw sw-grey"></i>STANDING</span>
-      <span><i class="sw sw-red"></i>BURNED</span>
-      <span><i class="sw sw-saved"></i>SAVED</span>
+    <div id="waffle-legend">
+      <span><i class="sw sw-grey"></i>Standing</span>
+      <span><i class="sw sw-red"></i>Burned</span>
+      <span><i class="sw sw-saved"></i>Saved</span>
     </div>
-    <p id="stat-line" class="mono">SPENT $0 &#183; +0 MIN EVACUATION</p>
+    <p id="stat-line">Spent $0 &#183; +0 min evacuation</p>
   </section>
 
   <section class="control" id="scenario-block" hidden>
-    <div class="control-head"><label class="mono">03 — What if</label><span class="control-value mono" id="scenario-value">Historical fire</span></div>
+    <div class="control-head"><label>What if</label><span class="control-value" id="scenario-value">Historical fire</span></div>
     <div class="scenario-row">
-      <button id="ignite-btn" type="button" class="mono">Start a fire anywhere</button>
-      <button id="scenario-reset" type="button" class="mono" hidden>Reset</button>
+      <button id="ignite-btn" type="button" class="btn btn-accent">Start a fire anywhere</button>
+      <button id="scenario-reset" type="button" class="btn btn-ghost" hidden>Reset</button>
     </div>
-    <div class="control-head sub"><label class="mono" for="wind-speed">Wind speed</label><span class="control-value mono" id="wind-speed-label"></span></div>
+    <div class="control-head sub"><label for="wind-speed">Wind speed</label><span class="control-value" id="wind-speed-label"></span></div>
     <input id="wind-speed" type="range" min="0" max="70" step="1" value="35">
-    <div class="control-head sub"><label class="mono" for="wind-dir">Wind from</label><span class="control-value mono" id="wind-dir-label"></span></div>
+    <div class="control-head sub"><label for="wind-dir">Wind from</label><span class="control-value" id="wind-dir-label"></span></div>
     <input id="wind-dir" type="range" min="0" max="355" step="5" value="45">
     <p id="scenario-note">Click the map to start a fire, or change the wind. The fire is re-simulated live against the breaks bought at this budget.</p>
   </section>
 
   <details id="more">
-    <summary class="mono">More &#9656;</summary>
+    <summary>More</summary>
 
     <section class="control" id="time-block">
-      <div class="control-head"><label class="mono" for="time">04 — Timeline</label><span class="control-value mono" id="time-label">0h 00m</span></div>
+      <div class="control-head"><label for="time">Timeline</label><span class="control-value" id="time-label">0h 00m</span></div>
       <div class="time-row">
-        <button id="play" type="button" class="mono" aria-label="Play">&#9654;&#xFE0E;</button>
+        <button id="play" type="button" aria-label="Play">&#9654;&#xFE0E;</button>
         <input id="time" type="range" min="0" max="720" step="5" value="0">
       </div>
     </section>
 
     <details id="explore">
-      <summary class="mono">05 — Budget &#8594; homes saved</summary>
-      <p id="curve-sentence" class="mono"></p>
+      <summary>Budget &#8594; homes saved</summary>
+      <p id="curve-sentence"></p>
       <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative homes saved"></svg>
     </details>
 
     <details id="simplifications">
-      <summary class="mono">06 — Real vs simplified</summary>
+      <summary>Real vs simplified</summary>
       <ul id="simp-list"></ul>
     </details>
 
     <footer>
-      <span id="basemap-status" class="mono">…</span>
-      <button id="sound" type="button" class="mono">SOUND OFF</button>
+      <span id="basemap-status">…</span>
+      <button id="sound" type="button" class="btn btn-ghost">Sound off</button>
     </footer>
   </details>
 </aside>
