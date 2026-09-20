@@ -21,34 +21,31 @@ the frontend session only needs the selector wired to the index.
 - Two Claude sessions shared one working tree all night with zero collisions
   after switching to explicit-path staging.
 
-## Altadena, CA — Eaton Fire re-run
+## Altadena, CA — Eaton Fire re-run (v2, after the bbox + budget fixes below)
 
-Baseline: first home hit at **37 min**, town center at 193 min, **11,841 of
-15,000 homes** hit within 12 h.
+Baseline: first home hit at **44 min**, town center at 284 min, **13,137 of
+15,000 homes** hit within 12 h. Calibration re-chose k_w=0.25 for the tighter
+box; gate passed at 33.2% with break_mult 0.02.
 
 | Budget | Spent | Breaks | Homes saved | $ / home | Evac. min (town) | Evac. min (1st home) |
 |---|---|---|---|---|---|---|
-| $500k | $464,135 | 11 | 2,474 | $188 | +103 | +132 |
-| $1M | $996,800 | 19 | 8,000 | **$125** | +351 | +317 |
-| $2M | $1,967,790 | 35 | 10,349 | $190 | +454 | +494 |
-| $3M | $2,947,680 | 51 | **11,838** | $249 | +739 | +627 |
-| $5M | $2,947,680 | 51 | 11,838 | $249 | +739 | +627 |
+| $500k | $487,720 | 9 | 2,982 | $164 | +117 | +35 |
+| $1M | $960,310 | 17 | 8,219 | **$117** | +332 | +200 |
+| $2M | $1,956,220 | 32 | 11,822 | $165 | +437 | +200 |
+| $3M | $2,984,615 | 49 | 12,911 | $231 | +549 | +200 |
 
-The $1M point is the demo money shot: $125 per home saved.
+The $1M point is the demo money shot: $117 per home saved.
 
 ## What didn't / judgment calls for Zach
 
-1. **Altadena saturates at $2.95M — the solver saves every baseline-hit home**
-   (3 left), and $3M/$5M are identical (CONTRACT allows ties, but the slider
-   will have a dead zone at the top). At break_mult 0.02 the single mountain-front
-   interface is sealable within a 12 h horizon. Options: (a) lean in — "Altadena
-   was savable for $3M" is a strong headline; (b) leakier breaks (but the gate
-   needs ≥ 30%); (c) shorter horizon for Altadena. I shipped (a) since the model
-   chose it honestly.
-2. **Altadena's 15,000 proxy homes spread over ALL 29,107 urban cells**, which
-   includes a lot of Pasadena along the south of the box — Altadena proper is
-   diluted. If you want density concentrated where the Eaton Fire actually hit,
-   shrink the bbox south edge (config-only, ~15 min rerun).
+1. ~~Altadena saturates / $3M–$5M dead zone~~ **RESOLVED**: budgets capped at
+   $3M (Zach's call) and the tighter box leaves 226 homes unsaved at the top —
+   no tie, no perfect-solution artifact, slider is live across its whole range.
+2. ~~15,000 proxy homes diluted over Pasadena~~ **RESOLVED**: south edge moved
+   34.13 → 34.16 (Zach's call; verified against the alignment PNG — the
+   Altadena–Pasadena line is ~34.165). Urban cells 29,107 → 15,204, so homes sit
+   ~1 per developed cell in Altadena proper. Full chain re-run, re-exported
+   (7.54 MB, 50 steps); `web/data/` untouched.
 3. Paradise's minutes-bought-to-town plateaus $3M→$5M (+418) — later breaks
    defend other lobes of town; homes saved keeps climbing. Expected, not a bug.
 4. The exported "breaks slow fire Nx" simplification line is now driven by each
@@ -59,8 +56,9 @@ The $1M point is the demo money shot: $125 per home saved.
 
 ## Where everything is
 
-- Selector: `web/towns/index.json` (2 towns). Paradise: `web/data/` (19.17 MB,
-  71 steps). Altadena: `web/towns/altadena/` (9.46 MB, 52 steps).
+- Selector: `web/towns/index.json` (2 towns). Paradise: `web/data/` (19.18 MB,
+  71 steps, + optional `sensitivity.json` — wind robustness, see README).
+  Altadena: `web/towns/altadena/` (7.54 MB, 50 steps).
 - Judge-facing: `README.md` (results, model, solver, sources, simplifications,
   Planscape positioning). Submission: `PLUME.md` (12-line how-we-built-it).
 - Per-town knobs: `towns/*.json`; calibrated params: `pipeline/out/<town>/config.json`;

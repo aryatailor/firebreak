@@ -207,7 +207,7 @@ def write_pngs(out: Path, geom: dict, cfg: dict, fuel: np.ndarray, elev: np.ndar
     lines = [f"{cfg['name']}  {rows}x{cols} @ {geom['cell_m']:g} m",
              f"fuel: {fuel_product}",
              f"homes: {bld_info['count']}"
-             + (" (proxy @ 2018 density)" if bld_info["proxy"] else " (OSM)"),
+             + (" (proxy @ pre-fire density)" if bld_info["proxy"] else " (OSM)"),
              "red circle = ignition, blue = town center"]
     draw.multiline_text((7, 7), "\n".join(lines), fill=(255, 255, 255))
     draw.multiline_text((6, 6), "\n".join(lines), fill=(0, 0, 0))

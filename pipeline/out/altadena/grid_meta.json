@@ -1,28 +1,28 @@
 {
   "town": "altadena",
   "name": "Altadena, CA",
-  "rows": 260,
+  "rows": 204,
   "cols": 307,
   "cell_m": 60.0,
-  "cell_merc": 72.54432260439246,
+  "cell_merc": 72.55723437812347,
   "bounds": {
     "west": -118.22,
     "north": 34.27,
-    "east": -118.01993524152113,
-    "south": 34.12986276882047
+    "east": -118.019899633071,
+    "south": 34.16004627188938
   },
   "bounds_3857": {
     "west_m": -13160190.201580802,
     "north_m": 4065114.3047008426,
-    "east_m": -13137919.094541254,
-    "south_m": 4046252.7808237006
+    "east_m": -13137915.130626718,
+    "south_m": 4050312.6288877055
   },
   "fuel": {
     "product": "LANDFIRE LF2024_FBFM40 (pre-fire vintage)",
     "check": {
-      "woody_frac": 0.3832,
-      "grass_barren_frac": 0.0183,
-      "corridor_cells": 13985,
+      "woody_frac": 0.3829,
+      "grass_barren_frac": 0.0181,
+      "corridor_cells": 13986,
       "looks_prefire": true,
       "note": "absolute check - no LF2014 layer on the live LFPS to compare"
     }
@@ -32,24 +32,24 @@
     "source": "proxy: developed-land cells scaled to pre-fire home count",
     "count": 15000,
     "proxy": true,
-    "urban_cells": 29107,
+    "urban_cells": 15204,
     "simplification": "Homes are estimated from developed-land cells at pre-fire density, not individual footprints."
   },
   "fuel_group_cells": {
-    "grass": 1728,
-    "grass_shrub": 15362,
-    "shrub": 22316,
-    "timber_understory": 3731,
-    "timber_litter": 7123,
+    "grass": 1261,
+    "grass_shrub": 14099,
+    "shrub": 21995,
+    "timber_understory": 3689,
+    "timber_litter": 6036,
     "slash": 1,
-    "urban": 29107,
+    "urban": 15204,
     "snow": 0,
     "agriculture": 0,
-    "water": 10,
-    "barren": 442
+    "water": 6,
+    "barren": 337
   },
   "unknown_fuel_frac": 0.0,
   "elev_nodata_frac": 0.0,
   "fetched": "2026-09-19",
-  "generated": "2026-09-19T23:12:34"
+  "generated": "2026-09-19T23:36:04"
 }

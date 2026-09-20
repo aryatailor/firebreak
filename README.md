@@ -27,6 +27,19 @@ about 90); within 12 hours it hits **7,765 of 11,000 homes**.
 
 The first half-million dollars saves a home for every $171 spent.
 
+## Results — Altadena, CA (Eaton Fire re-run)
+
+Same pipeline, second town, one config file (`towns/altadena.json`, LANDFIRE
+LF2024 fuels — the newest pre-fire vintage). Baseline: fire at the first homes
+in **44 minutes**; 13,137 of 15,000 homes hit within 12 hours.
+
+| Budget | Spent | Breaks | Homes saved | $ / home | Evac. minutes bought |
+|---|---|---|---|---|---|
+| $500k | $487,720 | 9 | 2,982 | $164 | +117 |
+| $1M | $960,310 | 17 | 8,219 | **$117** | +332 |
+| $2M | $1,956,220 | 32 | 11,822 | $165 | +437 |
+| $3M | $2,984,615 | 49 | 12,911 | $231 | +549 |
+
 ## How the simulation works
 
 Fire arrival time = **minimum travel time** from the ignition point. The town is a
