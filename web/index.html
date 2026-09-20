@@ -68,6 +68,35 @@
     <p id="stat-line" class="mono">SPENT $0 &#183; +0 MIN EVACUATION</p>
   </section>
 
+  <section id="freeplay" hidden>
+    <div class="control-head"><label class="mono">03 YOUR FIRE</label><span class="control-value mono" id="fp-sim"></span></div>
+    <div class="fp-row">
+      <button id="fp-draw" type="button" class="mono">Draw break</button>
+      <button id="fp-undo" type="button" class="mono">Undo</button>
+      <button id="fp-clear" type="button" class="mono">Clear</button>
+    </div>
+    <p id="fp-hint" class="mono">Click the map to set the fire.</p>
+    <div class="fp-wind">
+      <svg id="wind-dial" viewBox="0 0 64 64" role="img" aria-label="Wind direction">
+        <circle class="wd-ring" cx="32" cy="32" r="26"/>
+        <line class="wd-cross" x1="32" y1="4" x2="32" y2="10"/>
+        <line class="wd-cross" x1="32" y1="54" x2="32" y2="60"/>
+        <line class="wd-cross" x1="4" y1="32" x2="10" y2="32"/>
+        <line class="wd-cross" x1="54" y1="32" x2="60" y2="32"/>
+        <path id="wd-arrow" class="wd-arrow" d="M32 12 L38 34 L32 30 L26 34 Z"/>
+      </svg>
+      <div class="fp-wind-ctl">
+        <span id="wind-read" class="mono">WIND NE 35 MPH</span>
+        <input id="wind-speed" type="range" min="0" max="80" step="1" value="35">
+      </div>
+    </div>
+    <p id="fp-result" class="mono"></p>
+    <div id="fp-search" hidden>
+      <input id="fp-place" type="text" placeholder="Anywhere in the US: city, state" class="mono">
+      <p id="fp-status" class="mono"></p>
+    </div>
+  </section>
+
   <div id="panel-foot">
     <span id="basemap-status" class="mono">…</span>
     <span class="foot-btns">

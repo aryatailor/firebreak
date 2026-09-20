@@ -191,6 +191,40 @@ input[type=range]::-moz-range-thumb {
 }
 #play:hover { border-color: var(--muted); }
 
+/* Free play: your own ignition, your own wind, your own breaks */
+#freeplay { border-top: 1px solid var(--line); padding-top: 11px; }
+#freeplay[hidden] { display: none; }
+.fp-row { display: flex; gap: 6px; margin-top: 9px; }
+.fp-row button, #fp-search input {
+  flex: 1; padding: 7px 6px; cursor: pointer; background: none;
+  border: 1px solid var(--line); border-radius: 2px; color: var(--ink);
+  font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+}
+.fp-row button:hover { border-color: var(--muted); }
+.fp-row button.on { border-color: var(--green); color: var(--green); }
+#fp-hint { margin: 9px 0 0; font-size: 10.5px; color: var(--muted); letter-spacing: .04em; }
+#fp-result { margin: 9px 0 0; font-size: 11px; color: var(--ink); letter-spacing: .02em; min-height: 14px; }
+
+.fp-wind { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+#wind-dial { width: 54px; height: 54px; flex: 0 0 auto; cursor: grab; }
+#wind-dial:active { cursor: grabbing; }
+.wd-ring { fill: none; stroke: var(--line); stroke-width: 1; }
+.wd-cross { stroke: rgba(255, 255, 255, .18); stroke-width: 1; }
+.wd-arrow { fill: var(--fire); }
+.fp-wind-ctl { flex: 1; }
+#wind-read { font-size: 10px; color: var(--muted); letter-spacing: .08em; }
+#wind-speed { margin: 6px 0 0; }
+#wind-speed::-webkit-slider-thumb { background: var(--fire); }
+#wind-speed::-moz-range-thumb { background: var(--fire); }
+
+#fp-search { margin-top: 12px; }
+#fp-search input { width: 100%; text-transform: none; letter-spacing: .02em; font-size: 11px; cursor: text; }
+#fp-status { margin: 7px 0 0; font-size: 10px; color: var(--muted); letter-spacing: .04em; }
+
+/* drawing a break: the map is a drafting surface, not a pan surface */
+body.drawing #map { cursor: crosshair; }
+body.drawing .leaflet-grab { cursor: crosshair; }
+
 /* Panel footer: status, sound, and the one "i" that holds everything else */
 #panel-foot {
   margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line);
@@ -239,6 +273,8 @@ body:not([data-flow="pick"]):not([data-flow="done"]):not([data-flow="free"]) #bu
 }
 body.intro #skip { display: none; }
 body:not([data-flow="free"]) #timeline { opacity: .55; }
+/* in free play the solver budget is not the source of truth, your own fire is */
+body[data-flow="free"] #budget-block { display: none; }
 
 /* curve (inline SVG): 1 px line, dotted grid, no fill */
 #curve { width: 100%; height: auto; display: block; margin-top: 8px; }

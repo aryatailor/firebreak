@@ -170,6 +170,10 @@ const FireLayer = L.Layer.extend({
         } else if (age >= RAMP_SPAN) A = 179;                    // charcoal at 0.70
         else if (age >= 120) A = 217 - ((age - 120) * 38) / 60;  // 0.85 → 0.70
         else A = 217;                                            // body at 0.85
+        if (mask && mask[i]) {
+          // burnt-over cleared ground keeps reading as cleared ground: a pale scar
+          R = (R + 217 * 1.2) / 2.2; G = (G + 201 * 1.2) / 2.2; B = (B + 163 * 1.2) / 2.2;
+        }
         A *= ef[i];                               // fade out at the grid boundary
         if (age <= GLOW_SPAN) {                   // fresh ignition: amber-white glow
           gd[go] = 255; gd[go + 1] = 226; gd[go + 2] = 150;
@@ -587,10 +591,19 @@ async function loadModel() {
         b64u8: s.arrival_b64, breakCount: cum,
       };
     });
-    return { steps, breaksFC, dense: true };
+    return { steps, breaksFC, dense: true, solver: true };
   } catch (err) {
-    console.warn(`steps.json/breaks.geojson unavailable (${err.message}) — snap budgets only`);
-    const solutions = await loadJSON('solutions.json');
+    console.warn(`steps.json or breaks.geojson unavailable (${err.message}), trying snap budgets`);
+    let solutions;
+    try {
+      solutions = await loadJSON('solutions.json');
+    } catch (err2) {
+      // a free-play region (story:false): no solver output at all, and that is fine
+      return {
+        steps: [{ cost: 0, saved: 0, minutesBought: 0, breakCount: 0 }],
+        breaksFC: { type: 'FeatureCollection', features: [] }, dense: false, solver: false,
+      };
+    }
     const feats = [], seen = new Set();
     const steps = [{ cost: 0, saved: 0, minutesBought: 0, breakCount: 0 }];
     solutions.forEach((sol, i) => {
@@ -607,7 +620,7 @@ async function loadModel() {
         b64u16: sol.arrival_min_b64, breakCount: seen.size,
       });
     });
-    return { steps, breaksFC: { type: 'FeatureCollection', features: feats }, dense: false };
+    return { steps, breaksFC: { type: 'FeatureCollection', features: feats }, dense: false, solver: true };
   }
 }
 
@@ -637,9 +650,10 @@ async function main() {
   }
 
   const meta = await loadJSON('meta.json');
+  const optional = (name, fallback) => loadJSON(name).catch(() => fallback);
   const [baseline, curve, buildingsFC, legend, model] = await Promise.all([
-    loadJSON('baseline.json'), loadJSON('curve.json'),
-    loadJSON('buildings.geojson'), loadJSON('fuel_legend.json'), loadModel(),
+    loadJSON('baseline.json'), optional('curve.json', { points: [] }),
+    loadJSON('buildings.geojson'), optional('fuel_legend.json', []), loadModel(),
   ]);
   const { rows, cols } = meta.grid, b = meta.bounds;
   const bounds = L.latLngBounds([b.south, b.west], [b.north, b.east]);
@@ -741,7 +755,7 @@ async function main() {
   fire.setHomes(hx, hy, states);
   // 6:30 AM is the Camp Fire's ignition time — Paradise-only until meta grows a field.
   const ignTime = meta.town.startsWith('Paradise') ? ' · 6:30 AM' : '';
-  L.marker([meta.ignition.lat, meta.ignition.lon], {
+  const ignMarker = L.marker([meta.ignition.lat, meta.ignition.lon], {
     interactive: false, keyboard: false,
     icon: L.divIcon({
       className: 'ign', iconSize: [0, 0],
@@ -754,23 +768,31 @@ async function main() {
   const breakMask = new Uint8Array(rows * cols);
   const breakEdge = new Uint8Array(rows * cols);   // bits: 1 N, 2 S, 4 W, 8 E
   fire.setBreaks(breakMask, braster.cellBreak, breakEdge);
+  /* Edge bits mark which sides of a cleared cell face open ground, so the strip
+     gets a lighter rim. Shared by the solver's breaks and hand-drawn ones. */
+  function computeBreakEdges(cellList) {
+    for (const c of cellList) {
+      const r = (c / cols) | 0, cc = c % cols;
+      let e = 0;
+      if (r === 0 || !breakMask[c - cols]) e |= 1;
+      if (r === rows - 1 || !breakMask[c + cols]) e |= 2;
+      if (cc === 0 || !breakMask[c - 1]) e |= 4;
+      if (cc === cols - 1 || !breakMask[c + 1]) e |= 8;
+      breakEdge[c] = e;
+    }
+  }
   function rebuildBreakMask(stepIdx) {
     breakMask.fill(0); breakEdge.fill(0);
+    const active = [];
     for (const bk of braster.breaks) {
-      if (bk.step <= stepIdx) for (const c of bk.cells) breakMask[c] = 1;
+      if (bk.step <= stepIdx) for (const c of bk.cells) { breakMask[c] = 1; active.push(c); }
     }
-    for (const bk of braster.breaks) {
-      if (bk.step > stepIdx) continue;
-      for (const c of bk.cells) {
-        const r = (c / cols) | 0, cc = c % cols;
-        let e = 0;
-        if (r === 0 || !breakMask[c - cols]) e |= 1;
-        if (r === rows - 1 || !breakMask[c + cols]) e |= 2;
-        if (cc === 0 || !breakMask[c - 1]) e |= 4;
-        if (cc === cols - 1 || !breakMask[c + 1]) e |= 8;
-        breakEdge[c] = e;
-      }
-    }
+    computeBreakEdges(active);
+  }
+  function setMaskFromCells(cellList) {
+    breakMask.fill(0); breakEdge.fill(0);
+    for (const c of cellList) breakMask[c] = 1;
+    computeBreakEdges(cellList);
   }
 
   // Grids: step 0 = baseline (uint16 from baseline.json); later steps decode their
@@ -793,10 +815,17 @@ async function main() {
     return s;
   };
 
+  if (!model.solver) {          // free-play region: no budget, no curve to show
+    $('budget-block').hidden = true;
+    $('info-card').querySelector('h2').hidden = true;
+    $('curve').hidden = true;
+    $('curve-sentence').hidden = true;
+  }
   const chart = buildCurve(curve.points);
   const waffle = buildWaffle(nB);
   const audio = makeAudio();
   const state = { t: 0, budget: 0, step: 0, arrival: baseGrid };
+  let fpBaseGrid = null;      // free play's own no-breaks run, for "homes saved"
   let maxFresh = 1;
   let flow = 'crawl';   // walkthrough state (see setWalk)
   const skipEl = $('skip');
@@ -815,9 +844,10 @@ async function main() {
 
   function render() {
     const { t, arrival } = state;
+    const ref = fpBaseGrid || baseGrid;    // free play compares against its own baseline
     let hit = 0, saved = 0;
     for (let i = 0; i < nB; i++) {
-      const cb = arrival[cells[i]], bb = baseGrid[cells[i]];
+      const cb = arrival[cells[i]], bb = ref[cells[i]];
       if (cb <= t) { states[i] = 1; hit++; }                    // burned — stays red
       else if (bb <= H && cb > H) {                             // saved by breaks
         states[i] = 2;
@@ -908,6 +938,299 @@ async function main() {
     if (e.code === 'Space' && !/^(BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(e.target.tagName)) {
       e.preventDefault(); playEl.click();
     }
+  });
+
+  /* ---------------- free play: your own fire, wind and breaks ----------------
+     The model runs in a Web Worker (sim.js), proven cell-for-cell against
+     parity.json. Every change re-runs two sims: one without the drawn breaks to
+     get a fair baseline, one with them. */
+  const fp = {
+    on: false, ready: false, drawing: false, busy: false,
+    ignition: null, wind: null, breaks: [], cells: new Set(), fuel: null, queued: false,
+  };
+  let worker = null, runSeq = 0;
+
+  function fpSetHint(text) { $('fp-hint').textContent = text; }
+  function fpSetResult(text) { $('fp-result').textContent = text; }
+
+  function workerRun(breaksArr, wind, ignition) {
+    return new Promise((resolve, reject) => {
+      const id = ++runSeq;
+      const onMsg = ev => {
+        const m = ev.data;
+        if (m.type === 'result' && m.id === id) {
+          worker.removeEventListener('message', onMsg);
+          resolve(m);
+        } else if (m.type === 'error') {
+          worker.removeEventListener('message', onMsg);
+          reject(new Error(m.message));
+        }
+      };
+      worker.addEventListener('message', onMsg);
+      worker.postMessage({ type: 'run', id, ignition_rc: ignition, wind, breaks: breaksArr });
+    });
+  }
+
+  function bucketsToMinutes(buckets, bucketMin) {
+    const out = new Uint16Array(buckets.length);
+    for (let i = 0; i < buckets.length; i++) {
+      out[i] = buckets[i] === 255 ? UNREACHED : buckets[i] * bucketMin;
+    }
+    return out;
+  }
+
+  const COST_KEY = [null, 'grass', 'shrub', 'shrub', 'timber', 'timber', 'timber', null];
+  function breakCost(cellList) {
+    if (!fp.fuel || !fp.costPerAcre) return 0;
+    let acres = 0, total = 0;
+    for (const c of cellList) {
+      const key = COST_KEY[fp.fuel[c]];
+      if (!key) continue;
+      acres += fp.cellAcres;
+      total += fp.cellAcres * (fp.costPerAcre[key] || 0);
+    }
+    return Math.round(total);
+  }
+
+  async function fpRun() {
+    if (!fp.ready || fp.busy) { fp.queued = true; return; }
+    fp.busy = true;
+    try {
+      const all = [...fp.cells];
+      $('fp-sim').textContent = 'running';
+      const [bare, withBreaks] = await Promise.all([
+        workerRun([], fp.wind, fp.ignition),
+        all.length ? workerRun(all, fp.wind, fp.ignition) : null,
+      ].filter(Boolean));
+      const use = withBreaks || bare;
+      state.arrival = bucketsToMinutes(use.buckets, fp.bucketMin);
+      fpBaseGrid = bucketsToMinutes(bare.buckets, fp.bucketMin);
+      setMaskFromCells(all);
+      state.t = H;
+      timeEl.value = String(H);
+      render();
+      const lost = use.stats.homes_hit;
+      const saved = Math.max(0, bare.stats.homes_hit - lost);
+      const cost = breakCost(all);
+      $('fp-sim').textContent = `${Math.round(use.stats.sim_seconds * 1000)} ms`;
+      fpSetResult(all.length
+        ? `${saved.toLocaleString()} homes saved · ${fmtMoney(cost)} · ${lost.toLocaleString()} lost`
+        : `${lost.toLocaleString()} of ${nB.toLocaleString()} homes lost`);
+    } catch (err) {
+      $('fp-sim').textContent = 'failed';
+      fpSetResult(`Simulation failed. ${err.message}`);
+      console.error(err);
+    } finally {
+      fp.busy = false;
+      if (fp.queued) { fp.queued = false; fpRun(); }
+    }
+  }
+
+  function setWindDial(deg) {
+    fp.wind.from_deg = ((deg % 360) + 360) % 360;
+    $('wd-arrow').setAttribute('transform', `rotate(${fp.wind.from_deg} 32 32)`);
+    const dir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(fp.wind.from_deg / 45) % 8];
+    $('wind-read').textContent = `WIND ${dir} ${fp.wind.speed_mph} MPH`;
+  }
+
+  function latLngToCell(ll) {
+    const fyF = (yN - merc(ll.lat)) / (yN - yS);
+    const fxF = (ll.lng - b.west) / (b.east - b.west);
+    if (fxF < 0 || fxF >= 1 || fyF < 0 || fyF >= 1) return null;
+    return [Math.floor(fyF * rows), Math.floor(fxF * cols)];
+  }
+
+  /* A drawn line clears every cell whose centre is within one cell of it, which
+     is the two-cell width the solver uses. */
+  function addBreakLine(path) {
+    const added = [];
+    for (let s = 0; s < path.length - 1; s++) {
+      const a = path[s], c2 = path[s + 1];
+      const steps = Math.max(1, Math.ceil(Math.hypot(c2[0] - a[0], c2[1] - a[1]) * 2));
+      for (let k = 0; k <= steps; k++) {
+        const r = a[0] + (c2[0] - a[0]) * k / steps;
+        const c = a[1] + (c2[1] - a[1]) * k / steps;
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const rr = Math.round(r) + dr, cc = Math.round(c) + dc;
+            if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+            if (Math.hypot(rr - r, cc - c) > 1.0) continue;
+            const idx = rr * cols + cc;
+            if (!fp.cells.has(idx)) { fp.cells.add(idx); added.push(idx); }
+          }
+        }
+      }
+    }
+    if (added.length) fp.breaks.push(added);
+    return added.length;
+  }
+
+  function freePlayReady() {
+    if (fp.on) return;
+    fp.on = true;
+    $('freeplay').hidden = false;
+    if (!worker) startWorker();
+  }
+
+  function startWorker() {
+    try {
+      worker = new Worker('sim.js');
+    } catch (err) {
+      fpSetHint('Free play needs a local server.');
+      return;
+    }
+    worker.addEventListener('message', ev => {
+      const m = ev.data;
+      if (m.type === 'ready') {
+        fp.ready = true;
+        fp.bucketMin = m.bucket_min || 5;
+        fp.fuel = m.fuel;
+        fp.costPerAcre = m.cost_per_acre;
+        fp.cellAcres = m.cell_acres;
+        fp.ignition = m.ignition_rc.slice();
+        fp.wind = Object.assign({}, m.wind);
+        $('wind-speed').value = String(fp.wind.speed_mph);
+        setWindDial(fp.wind.from_deg);
+        fpRun();
+      } else if (m.type === 'error') {
+        $('fp-sim').textContent = 'failed';
+        fpSetResult(`Simulation failed. ${m.message}`);
+      }
+    });
+    worker.postMessage({ type: 'load', dataDir: DATA_DIR });
+  }
+
+  // map interaction: click sets the ignition, drag draws a break
+  let drawPath = null;
+  map.on('click', e => {
+    if (!fp.on || fp.drawing) return;
+    const rc = latLngToCell(e.latlng);
+    if (!rc) return;
+    fp.ignition = rc;
+    ignMarker.setLatLng(e.latlng);
+    fpSetHint('Draw a break, or click again to move the fire.');
+    fpRun();
+  });
+  map.on('mousedown', e => {
+    if (!fp.on || !fp.drawing) return;
+    const rc = latLngToCell(e.latlng);
+    if (!rc) return;
+    drawPath = [rc];
+    map.dragging.disable();
+  });
+  map.on('mousemove', e => {
+    if (!drawPath) return;
+    const rc = latLngToCell(e.latlng);
+    if (!rc) return;
+    const last = drawPath[drawPath.length - 1];
+    if (rc[0] !== last[0] || rc[1] !== last[1]) drawPath.push(rc);
+  });
+  map.on('mouseup', () => {
+    if (!drawPath) return;
+    const path = drawPath;
+    drawPath = null;
+    map.dragging.enable();
+    if (path.length < 2) return;
+    if (addBreakLine(path)) fpRun();
+  });
+
+  $('fp-draw').onclick = () => {
+    fp.drawing = !fp.drawing;
+    $('fp-draw').classList.toggle('on', fp.drawing);
+    document.body.classList.toggle('drawing', fp.drawing);
+    fpSetHint(fp.drawing ? 'Drag across the map to cut a break.' : 'Click the map to move the fire.');
+  };
+  $('fp-undo').onclick = () => {
+    const last = fp.breaks.pop();
+    if (!last) return;
+    last.forEach(c => fp.cells.delete(c));
+    fpRun();
+  };
+  $('fp-clear').onclick = () => {
+    fp.breaks = [];
+    fp.cells.clear();
+    fpRun();
+  };
+  $('wind-speed').oninput = () => {
+    if (!fp.wind) return;
+    fp.wind.speed_mph = Number($('wind-speed').value);
+    setWindDial(fp.wind.from_deg);
+    fpRun();
+  };
+  (() => {                       // drag the dial to set wind direction
+    const dial = $('wind-dial');
+    let dragging = false;
+    const angleFrom = ev => {
+      const r = dial.getBoundingClientRect();
+      const dx = ev.clientX - (r.left + r.width / 2);
+      const dy = ev.clientY - (r.top + r.height / 2);
+      return Math.round((Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360 / 5) * 5;
+    };
+    dial.addEventListener('mousedown', ev => { dragging = true; setWindDial(angleFrom(ev)); ev.preventDefault(); });
+    window.addEventListener('mousemove', ev => { if (dragging) setWindDial(angleFrom(ev)); });
+    window.addEventListener('mouseup', () => { if (dragging) { dragging = false; fpRun(); } });
+  })();
+
+  /* Region search. Needs serve.py: /api/health decides whether the box exists at
+     all, so a plain static server simply shows nothing rather than something broken.
+     Geocoding is Nominatim, which needs no key. */
+  const fpStatus = $('fp-status');
+  async function apiHealthy() {
+    try {
+      const r = await fetch('api/health', { signal: AbortSignal.timeout(4000) });
+      if (!r.ok) return false;
+      const j = await r.json();
+      return !!j.ok;
+    } catch (e) { return false; }
+  }
+  async function geocode(q) {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='
+      + encodeURIComponent(q);
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`Search failed (${r.status}).`);
+    const j = await r.json();
+    if (!j.length) throw new Error('No place found by that name.');
+    return { lat: +j[0].lat, lon: +j[0].lon, name: j[0].display_name.split(',').slice(0, 2).join(',') };
+  }
+  async function buildRegion(q) {
+    fpStatus.textContent = 'Looking up the place.';
+    const place = await geocode(q);
+    fpStatus.textContent = `Requesting ${place.name}.`;
+    const r = await fetch('api/region', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: place.lat, lon: place.lon, name: place.name }),
+    });
+    if (!r.ok) throw new Error(`Region build failed (${r.status}).`);
+    const job = await r.json();
+    if (job.status === 'ready') return job;
+    for (let i = 0; i < 300; i++) {                  // poll about once a second
+      await new Promise(res => setTimeout(res, 1000));
+      const s = await fetch(`api/region/${job.id}/status`);
+      if (!s.ok) throw new Error(`Status failed (${s.status}).`);
+      const st = await s.json();
+      if (st.status === 'ready') return st;
+      if (st.status === 'error') throw new Error(st.error || 'Region build failed.');
+      fpStatus.textContent = `${st.stage || 'Building'} ${st.pct != null ? st.pct + '%' : ''}`.trim();
+    }
+    throw new Error('Region build timed out.');
+  }
+  apiHealthy().then(ok => {
+    if (!ok) return;                                  // static server: no search box
+    $('fp-search').hidden = false;
+    const input = $('fp-place');
+    input.onkeydown = async ev => {
+      if (ev.key !== 'Enter' || !input.value.trim()) return;
+      const q = input.value.trim();
+      input.disabled = true;
+      try {
+        const done = await buildRegion(q);
+        fpStatus.textContent = 'Loading the region.';
+        goToTown(done.id);
+      } catch (err) {
+        fpStatus.textContent = err.message;
+        input.disabled = false;
+      }
+    };
   });
 
   // The one "i": everything that is not budget or homes saved lives behind it.
@@ -1095,7 +1418,9 @@ async function main() {
     intro.classList.add('gone');
     setTimeout(() => intro.remove(), 700);
     map.invalidateSize();
-    runOpening();
+    // story:false regions have no solver run and no crawl, so they open in free play
+    if (entry && entry.story === false) { setWalk('free'); state.t = H; render(); }
+    else runOpening();
   }
   $('intro').addEventListener('click', () => startApp(true));
 
@@ -1112,6 +1437,7 @@ async function main() {
     }
     return best;
   })();
+  window._fb.breakCells = () => [...fp.cells];
   window._fb.homeProbe = () => {
     const cv = document.querySelector('.fire-canvas');
     if (!cv || !nB) return null;

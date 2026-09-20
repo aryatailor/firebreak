@@ -75,6 +75,58 @@ deleted.
   Pin centres come from each town's own `meta.bounds`, fetched once in the
   background, since the index carries no coordinates.
 
+## Tier 4: free play
+
+### Parity: the JS sim matches Python exactly
+
+`web/sim.js` implements CONTRACT.md "The algorithm, exactly": directed 8-neighbour
+Dijkstra with a binary heap, `min(base_i, base_j)` edge rates, per-edge slope and
+one of eight wind constants, weights computed on the fly, arrival rounded to
+5-minute buckets. It runs in a Web Worker, so the UI never blocks.
+
+Measured against `web/data/parity.json` on the Paradise grid (152,304 cells):
+
+| case | within 1 bucket | exact | worst delta |
+|---|---|---|---|
+| baseline | **100.000%** | **100.000%** | 0 buckets |
+| with test break | **100.000%** | **100.000%** | 0 buckets |
+
+Target was 99% within one bucket. The result is cell-for-cell identical in both
+cases, so the fallback to `POST /api/simulate` was never needed. A full run takes
+**73 to 101 ms** (budget was 500 ms), and free play issues two runs per change: one
+without the drawn breaks for a fair baseline, one with them.
+
+### Free play behaviour
+
+- Click the map to place the ignition; the fire re-runs from there under the
+  current wind.
+- Wind is a draggable compass dial plus a speed slider, shown only in free play.
+  Changing either re-runs the model.
+- "Draw break" turns the map into a drafting surface: drag a line, and every cell
+  whose centre lies within one cell of it is cleared, which is the two-cell width
+  the solver uses. Undo drops the last line, Clear drops all of them. Cost is
+  cells times `cell_acres` times `cost_per_acre` for that cell's fuel class, with
+  class 7 (urban) never clearable, per the contract's mapping.
+- Drawn breaks render exactly like the solver's, as cleared ground in the fire
+  canvas. **Addition:** once the fire burns over a break, the cells keep a pale
+  sand tint instead of going charcoal, so the line you cut stays readable in the
+  end state. Sampled cells read `130,121,101` against `26,26,26` for burnt ground
+  beside them. Without this the break was invisible at the end of a 12 hour run,
+  which is where free play leaves the clock.
+- The budget slider is hidden in free play. With a custom ignition the solver's
+  precomputed breaks no longer apply, and two sources of truth on one map is worse
+  than one.
+- `story:false` regions skip the opening and land directly in free play, and the
+  page no longer requires solver files: `steps.json`, `breaks.geojson`,
+  `solutions.json` and `curve.json` are all optional, with the curve hidden when
+  absent. Verified by 404ing all four.
+- **Region search** appears only when `GET /api/health` answers. On a plain static
+  server the box stays hidden and nothing looks broken. Geocoding is Nominatim with
+  no key, then `POST /api/region` and a one-second poll of the status endpoint,
+  showing the stage and percentage it reports. `serve.py` had not landed when this
+  was written, so the happy path is built to the contract but exercised only
+  against the degraded path.
+
 ### Home drift, measured
 
 Homes are pixels inside the fire's grid canvas, so their position is quantised to
