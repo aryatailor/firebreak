@@ -29,9 +29,11 @@
   },
   "terrain": "LANDFIRE LF2020_Elev",
   "buildings": {
-    "source": "overpass (https://overpass-api.de/api/interpreter)",
-    "count": 1799,
-    "proxy": false
+    "source": "proxy: developed-land cells scaled to pre-fire home count",
+    "count": 11000,
+    "proxy": true,
+    "urban_cells": 4961,
+    "simplification": "Homes are estimated from developed-land cells at 2018 density, not individual footprints."
   },
   "fuel_group_cells": {
     "grass": 15616,
@@ -49,5 +51,5 @@
   "unknown_fuel_frac": 0.0,
   "elev_nodata_frac": 0.0,
   "fetched": "2026-09-19",
-  "generated": "2026-09-19T21:57:35"
+  "generated": "2026-09-19T22:11:26"
 }

@@ -220,6 +220,12 @@ solver shape (§7), schema freeze (§8). Everything else is mechanics.**
 
 ## Decisions
 
+- Homes are the urban-cell proxy scaled to `homes_estimate` (11,000 for Paradise —
+  the pre-fire count), `buildings_proxy: true`, plus a meta.simplifications line
+  ("Homes are estimated from developed-land cells at 2018 density, not individual
+  footprints") — Zach's call 2026-09-19: the story is 2018, and 2026 OSM reflects
+  post-fire Paradise (1,799 buildings, ~6× undercount). Overpass fetch stays cached
+  but unused.
 - Repo was created private; flipped **public** at approval time (2026-09-19),
   `gh repo edit --visibility public`.
 - `pipeline/out/<town>/` is committed except bulky arrays (`*.npy`/`*.npz`

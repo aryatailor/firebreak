@@ -27,11 +27,11 @@ function decodeGrid(b64, rows, cols) {
   return out;
 }
 
-/* Fire age ramp (DESIGN.md): #ffd166 → #ff7a1a → #c1121f → #2b2b2b across RAMP_SPAN
-   minutes of age, precomputed as a per-minute RGB lookup table. */
+/* Fire age ramp: #ffd166 → #ff7a1a → #c1121f → translucent charcoal #1a1a1a across
+   RAMP_SPAN minutes of age, precomputed as a per-minute RGB lookup table. */
 const RAMP_SPAN = 180;
 const RAMP = (() => {
-  const stops = [[255, 209, 102], [255, 122, 26], [193, 18, 31], [43, 43, 43]];
+  const stops = [[255, 209, 102], [255, 122, 26], [193, 18, 31], [26, 26, 26]];
   const lut = new Uint8Array((RAMP_SPAN + 1) * 3);
   for (let m = 0; m <= RAMP_SPAN; m++) {
     const f = (m / RAMP_SPAN) * (stops.length - 1);
@@ -60,14 +60,16 @@ const FireLayer = L.Layer.extend({
   onAdd() {
     const c = this._canvas = L.DomUtil.create('canvas', 'fire-canvas leaflet-zoom-animated');
     const g = this._glow = L.DomUtil.create('canvas', 'glow-canvas leaflet-zoom-animated');
-    c.width = g.width = this._cols; c.height = g.height = this._rows;
+    c.width = this._cols * 2; c.height = this._rows * 2;   // 2× so blur reads soft
+    g.width = this._cols; g.height = this._rows;
     this._ctx = c.getContext('2d');
     this._gctx = g.getContext('2d');
     this._off = document.createElement('canvas');       // unblurred glow cells
     this._off.width = this._cols; this._off.height = this._rows;
     this._octx = this._off.getContext('2d');
-    this._img = this._ctx.createImageData(this._cols, this._rows);
+    this._img = this._ctx.createImageData(this._cols * 2, this._rows * 2);
     this._gimg = this._octx.createImageData(this._cols, this._rows);
+    this._frame = 0;
     this.getPane().appendChild(c);
     this.getPane().appendChild(g);                      // glow above the cells
     this._reset();
@@ -94,18 +96,33 @@ const FireLayer = L.Layer.extend({
     L.DomUtil.setTransform(this._glow, nb.min, scale);
   },
   draw(arrival, t) {
+    const frame = this._frame = (this._frame + 1) & 1023;
+    const cols = this._cols, W2 = cols * 2, row4 = W2 * 4;
     const d = this._img.data, gd = this._gimg.data;
     for (let i = 0; i < arrival.length; i++) {
-      const a = arrival[i], o = i * 4;
-      if (a > t) { d[o + 3] = 0; gd[o + 3] = 0; continue; }  // unburned (incl. 65535)
-      const age = t - a;
-      const k = Math.min(age, RAMP_SPAN) * 3;
-      d[o] = RAMP[k]; d[o + 1] = RAMP[k + 1]; d[o + 2] = RAMP[k + 2];
-      d[o + 3] = 191;                             // 0.75 alpha (DESIGN.md)
-      if (age <= GLOW_SPAN) {                     // fresh ignition: amber-white glow
-        gd[o] = 255; gd[o + 1] = 226; gd[o + 2] = 150;
-        gd[o + 3] = 220 - Math.round((220 * age) / GLOW_SPAN);
-      } else gd[o + 3] = 0;
+      const a = arrival[i], go = i * 4;
+      const o = (((i / cols) | 0) * 2 * W2 + (i % cols) * 2) * 4;   // 2×2 block
+      let R = 0, G = 0, B = 0, A = 0;
+      if (a <= t) {
+        const age = t - a;
+        const k = Math.min(age, RAMP_SPAN) * 3;
+        R = RAMP[k]; G = RAMP[k + 1]; B = RAMP[k + 2];
+        if (age <= 15) {
+          // feathered fresh perimeter at 0.55, flickering ±0.1 (seeded, per frame)
+          A = 140 + ((((i * 2654435761 ^ frame * 40503) >>> 0) & 255) - 128) * 0.2;
+          A = A < 0 ? 0 : A;
+        } else if (age >= RAMP_SPAN) A = 179;                    // charcoal at 0.70
+        else if (age >= 120) A = 217 - ((age - 120) * 38) / 60;  // 0.85 → 0.70
+        else A = 217;                                            // body at 0.85
+        if (age <= GLOW_SPAN) {                   // fresh ignition: amber-white glow
+          gd[go] = 255; gd[go + 1] = 226; gd[go + 2] = 150;
+          gd[go + 3] = 220 - Math.round((220 * age) / GLOW_SPAN);
+        } else gd[go + 3] = 0;
+      } else gd[go + 3] = 0;
+      d[o] = R; d[o + 1] = G; d[o + 2] = B; d[o + 3] = A;
+      d[o + 4] = R; d[o + 5] = G; d[o + 6] = B; d[o + 7] = A;
+      d[o + row4] = R; d[o + row4 + 1] = G; d[o + row4 + 2] = B; d[o + row4 + 3] = A;
+      d[o + row4 + 4] = R; d[o + row4 + 5] = G; d[o + row4 + 6] = B; d[o + row4 + 7] = A;
     }
     this._ctx.putImageData(this._img, 0, 0);
     this._octx.putImageData(this._gimg, 0, 0);
@@ -117,12 +134,13 @@ const FireLayer = L.Layer.extend({
   },
 });
 
-/* Building dots: a viewport-sized canvas (scales to 10k+ points where per-point DOM
-   markers would not). `hits` is a Uint8Array shared with the app's render loop. */
+/* Building squares: a viewport-sized canvas (scales to 10k+ points where per-point
+   DOM markers would not). `states` is a Uint8Array shared with the render loop:
+   0 = standing grey, 1 = hit red, 2 = saved by breaks (grey + green ring). */
 const DotsLayer = L.Layer.extend({
-  initialize(latlngs, hits, opts) {
+  initialize(latlngs, states, opts) {
     L.setOptions(this, opts);
-    this._ll = latlngs; this._hits = hits;
+    this._ll = latlngs; this._states = states;
     this._x = new Float32Array(latlngs.length);
     this._y = new Float32Array(latlngs.length);
   },
@@ -160,28 +178,59 @@ const DotsLayer = L.Layer.extend({
   },
   redraw() {
     const { width: w, height: h } = this._canvas;
-    const ctx = this._ctx, x = this._x, y = this._y, hits = this._hits;
+    const ctx = this._ctx, x = this._x, y = this._y, st = this._states;
+    const s = this._map.getZoom() >= 13 ? 3 : 2, hs = s / 2;   // 2×2 px, 3×3 zoomed
     ctx.clearRect(0, 0, w, h);
-    for (let pass = 0; pass < 2; pass++) {         // unhit below, hit on top
-      ctx.fillStyle = pass ? '#ff3b3b' : 'rgba(255,255,255,0.4)';
+    for (let pass = 0; pass < 3; pass++) {   // grey, then saved rings, hit red on top
+      const want = [0, 2, 1][pass];
+      ctx.fillStyle = want === 1 ? '#ff3b3b' : 'rgba(154,159,166,0.7)';
+      if (want === 2) { ctx.strokeStyle = '#3ddc84'; ctx.lineWidth = 1; }
       for (let i = 0; i < x.length; i++) {
-        if (hits[i] !== pass) continue;
-        if (x[i] < -3 || y[i] < -3 || x[i] > w + 3 || y[i] > h + 3) continue;
-        ctx.fillRect(x[i] - 1.5, y[i] - 1.5, 3, 3);  // 3 px dots (DESIGN.md)
+        if (st[i] !== want) continue;
+        if (x[i] < -5 || y[i] < -5 || x[i] > w + 5 || y[i] > h + 5) continue;
+        ctx.fillRect(x[i] - hs, y[i] - hs, s, s);
+        if (want === 2) ctx.strokeRect(x[i] - hs - 1.5, y[i] - hs - 1.5, s + 3, s + 3);
       }
     }
   },
 });
 
-/* Basemap: satellite tiles with the hillshade/fuel PNG blended over at 35% for
-   relief. The page renders offline-first — the PNG starts at full opacity, so
-   nothing waits on the network — and steps back to 35% only after a probe tile AND
-   a full tile-layer load succeed (usually < 3 s; a slow first handshake just
-   upgrades late). A failed probe means no tiles ever; any tileerror returns the
-   PNG to full strength until tiles complete a clean load again. */
-const BLEND_OPACITY = 0.35;
-function setupBasemap(map, bounds, onMode) {
-  const png = L.imageOverlay(`${DATA_DIR}/basemap.png`, bounds, { opacity: 1 }).addTo(map);
+/* Offline basemap PNG with its edges feathered by a `feather`-px alpha ramp so it
+   fades into the dark page instead of reading as a pasted rectangle. */
+function featheredOverlay(src, bounds, feather) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onerror = () => resolve(L.imageOverlay(src, bounds));   // serve it raw
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      const w = cv.width = img.width, h = cv.height = img.height;
+      const x = cv.getContext('2d');
+      x.drawImage(img, 0, 0);
+      x.globalCompositeOperation = 'destination-out';
+      const f = Math.min(feather, w / 4, h / 4);
+      const edges = [
+        [0, 0, f, 0, 0, 0, f, h], [w, 0, w - f, 0, w - f, 0, f, h],
+        [0, 0, 0, f, 0, 0, w, f], [0, h, 0, h - f, 0, h - f, w, f],
+      ];
+      for (const [gx0, gy0, gx1, gy1, rx, ry, rw, rh] of edges) {
+        const grad = x.createLinearGradient(gx0, gy0, gx1, gy1);
+        grad.addColorStop(0, 'rgba(0,0,0,1)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = grad;
+        x.fillRect(rx, ry, rw, rh);
+      }
+      resolve(L.imageOverlay(cv.toDataURL(), bounds));
+    };
+    img.src = src;
+  });
+}
+
+/* Basemap: dimmed satellite tiles are the base; the feathered PNG is ONLY the
+   offline fallback, never blended over satellite. Offline-first: the PNG shows
+   until a clean tile batch lands; any tileerror brings it straight back. */
+async function setupBasemap(map, bounds, onMode) {
+  const png = await featheredOverlay(`${DATA_DIR}/basemap.png`, bounds, 40);
+  png.addTo(map);
   onMode('offline basemap');
   if (FORCE_OFFLINE) { onMode('offline basemap (forced)'); return; }
   const probe = new Image();
@@ -191,9 +240,16 @@ function setupBasemap(map, bounds, onMode) {
     // clean-batch flag is needed or 'load' would undo the tileerror fallback.
     let errored = false;
     tiles.on('loading', () => { errored = false; });
-    tiles.on('tileerror', () => { errored = true; png.setOpacity(1); onMode('offline basemap (tiles failed)'); });
+    tiles.on('tileerror', () => {
+      errored = true;
+      if (!map.hasLayer(png)) png.addTo(map);
+      onMode('offline basemap (tiles failed)');
+    });
     tiles.on('load', () => {
-      if (!errored) { png.setOpacity(BLEND_OPACITY); onMode('satellite + hillshade (online)'); }
+      if (!errored) {
+        if (map.hasLayer(png)) map.removeLayer(png);
+        onMode('satellite (online)');
+      }
     });
   };
   probe.src = TILE_URL.replace('{z}', 0).replace('{y}', 0).replace('{x}', 0) + `?probe=${Date.now()}`;
@@ -234,9 +290,10 @@ function buildCurve(points) {
     const r = svg.getBoundingClientRect();
     const cost = ((e.clientX - r.left) * (W / r.width) - ML) / (W - ML - MR) * xmax;
     const p = near(cost);
-    $('curve-readout').textContent = `${fmtMoney(p.cumulative_cost)} → ${p.cumulative_saved} saved`;
+    $('curve-sentence').textContent =
+      `${fmtMoney(p.cumulative_cost)} saves ${p.cumulative_saved} homes`;
   };
-  svg.onmouseleave = () => { $('curve-readout').textContent = selText; };
+  svg.onmouseleave = () => { $('curve-sentence').textContent = selText; };
   return {
     mark(cost, saved, label) {
       $('curve-mark').setAttribute('x1', X(cost));
@@ -244,7 +301,41 @@ function buildCurve(points) {
       $('curve-dot').setAttribute('cx', X(cost));
       $('curve-dot').setAttribute('cy', Y(saved));
       selText = label;
-      $('curve-readout').textContent = label;
+      $('curve-sentence').textContent = label;
+    },
+  };
+}
+
+/* Waffle: the primary panel visual — one square = `unit` homes. Red fills from the
+   top-left as homes burn; green-ringed squares fill from the bottom-right as the
+   baseline front passes homes the breaks protect. */
+function buildWaffle(total) {
+  const cv = $('waffle'), COLS = 20, CELL = 14, SQ = 11;
+  const unit = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500].find(u => total / u <= 320) || 1000;
+  const n = Math.ceil(total / unit), rows = Math.ceil(n / COLS);
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = COLS * CELL * dpr; cv.height = rows * CELL * dpr;
+  cv.style.width = `${COLS * CELL}px`; cv.style.height = `${rows * CELL}px`;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  $('waffle-caption').textContent = `1 SQ = ${unit} ${unit === 1 ? 'HOME' : 'HOMES'}`;
+  return {
+    draw(hitCount, savedCount) {
+      const red = Math.min(n, Math.round(hitCount / unit));
+      const green = Math.min(n - red, Math.round(savedCount / unit));
+      ctx.clearRect(0, 0, COLS * CELL, rows * CELL);
+      for (let i = 0; i < n; i++) {
+        const cx = (i % COLS) * CELL + 1, cy = ((i / COLS) | 0) * CELL + 1;
+        if (i < red) {
+          ctx.fillStyle = '#ff3b3b'; ctx.fillRect(cx, cy, SQ, SQ);
+        } else if (i >= n - green) {
+          ctx.fillStyle = 'rgba(154,159,166,0.5)'; ctx.fillRect(cx, cy, SQ, SQ);
+          ctx.strokeStyle = '#3ddc84'; ctx.lineWidth = 1;
+          ctx.strokeRect(cx + 0.5, cy + 0.5, SQ - 1, SQ - 1);
+        } else {
+          ctx.fillStyle = 'rgba(154,159,166,0.28)'; ctx.fillRect(cx, cy, SQ, SQ);
+        }
+      }
     },
   };
 }
@@ -273,43 +364,52 @@ async function main() {
     $('legend').hidden = !mode.startsWith('offline');
   });
 
-  // Buildings → flat arrays; `hits` is shared with DotsLayer.
+  // Buildings → flat arrays; `states` is shared with DotsLayer.
   const feats = buildingsFC.features, nB = feats.length;
-  const cells = new Uint32Array(nB), hits = new Uint8Array(nB);
+  const cells = new Uint32Array(nB), states = new Uint8Array(nB);
   const lls = feats.map((f, i) => {
     cells[i] = f.properties.row * cols + f.properties.col;
     return L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]);
   });
-  $('stat-hit-label').textContent = `buildings hit of ${nB.toLocaleString()}`;
+  $('stat-hit-label').textContent = `homes hit of ${nB.toLocaleString()}`;
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
-  const dots = new DotsLayer(lls, hits, { pane: 'dots' }).addTo(map);
+  const dots = new DotsLayer(lls, states, { pane: 'dots' }).addTo(map);
   const vecRenderer = L.svg({ pane: 'vec' });
-  L.circleMarker([meta.ignition.lat, meta.ignition.lon], {
-    renderer: vecRenderer, radius: 5, color: '#ffd166', weight: 2,
-    fillColor: '#ff7a1a', fillOpacity: 0.9,
-  }).addTo(map).bindTooltip(`Ignition — ${meta.ignition.label}`);
+  // 6:30 AM is the Camp Fire's ignition time — hard-coded until meta grows a field.
+  L.marker([meta.ignition.lat, meta.ignition.lon], {
+    interactive: false, keyboard: false,
+    icon: L.divIcon({
+      className: 'ign', iconSize: [0, 0],
+      html: `<span class="ign-dot"></span><span class="ign-label">${meta.ignition.label.split(' (')[0]} · 6:30 AM</span>`,
+    }),
+  }).addTo(map);
 
   const grids = [decodeGrid(baseline.arrival_min_b64, rows, cols)];  // [0]=baseline
   const gridFor = i =>
     grids[i] || (grids[i] = decodeGrid(solutions[i - 1].arrival_min_b64, rows, cols));
 
   const chart = buildCurve(curve.points);
+  const waffle = buildWaffle(nB);
   const state = { t: 0, arrival: grids[0] };
   let breaksLayer = null;
 
   function render() {
-    const { t, arrival } = state, base = grids[0];
-    let hit = 0, baseHit = 0;
+    const { t, arrival } = state, base = grids[0], H = meta.horizon_min;
+    let hit = 0, saved = 0;
     for (let i = 0; i < nB; i++) {
-      const h = arrival[cells[i]] <= t ? 1 : 0;
-      hits[i] = h; hit += h;
-      if (base[cells[i]] <= t) baseHit++;
+      const cb = arrival[cells[i]], bb = base[cells[i]];
+      if (cb <= t) { states[i] = 1; hit++; }                    // burning/burned
+      else if (bb <= H && cb > H) {                             // saved by breaks
+        states[i] = 2;
+        if (bb <= t) saved++;   // counts up as the baseline front would pass it
+      } else states[i] = 0;                                     // standing
     }
     fire.draw(arrival, t);
     dots.redraw();
+    waffle.draw(hit, saved);
     $('stat-hit').textContent = hit.toLocaleString();
-    $('stat-saved').textContent = Math.max(0, baseHit - hit).toLocaleString();
+    $('stat-saved').textContent = saved.toLocaleString();
     $('time-label').textContent = fmtTime(t);
   }
 
@@ -327,7 +427,8 @@ async function main() {
     $('stat-spent').textContent = sol ? fmtMoney(sol.cost) : '$0';
     $('stat-spent').title = sol ? `$${sol.cost.toLocaleString()} spent of $${sol.budget.toLocaleString()}` : '';
     chart.mark(sol ? sol.cost : 0, sol ? sol.stats.houses_saved : 0,
-      sol ? `${fmtMoney(sol.cost)} → ${sol.stats.houses_saved} saved` : '$0 — baseline');
+      sol ? `${fmtMoney(sol.cost)} saves ${sol.stats.houses_saved} homes`
+          : '$0 saves 0 homes — move the budget slider');
     render();
   }
 

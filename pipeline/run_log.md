@@ -6,3 +6,4 @@ in each pipeline script — no silent failures.
 
 (empty — no runs yet)
 - 2026-09-19T21:52:32 [fetch/paradise] LANDFIRE worker failed (exit 1) - falling back to WorldCover+CopDEM
+- 2026-09-19T22:11:09 [grid/paradise] FAILED: OSError: [Errno 22] Invalid argument: 'C:\\Users\\speck\\.claude\\firebreak\\pipeline\\out\\paradise\\alignment_check.png'

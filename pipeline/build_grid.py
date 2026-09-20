@@ -11,8 +11,10 @@ Stage 2 of the Firebreak pipeline (see implementation-notes.md "## Plan").
   LF2016_FBFM40 is the LF 2016 Remap base (~2016 conditions, pre-Camp-Fire); a
   corridor sanity check (woody fraction along ignition->town) confirms it is not a
   burn-scarred layer. Numbers recorded in grid_meta.json and later meta.data.
-- Buildings from the cached Overpass JSON -> (row, col); fewer than 500 -> proxy
-  points from built-up (urban) cells, flagged buildings_proxy.
+- Homes are the urban-cell PROXY scaled to the town's pre-fire count (config
+  homes_estimate), buildings_proxy=true - Zach's call 2026-09-19: the story is
+  2018, so the numbers are 2018's (2026 OSM reflects post-fire Paradise and
+  undercounts ~6x). The Overpass fetch stays cached in data_raw but unused.
 - Writes: fuel.npy, elev.npy, buildings.npz, grid_meta.json, alignment_check.png
   (fuel colors + building dots + ignition marker - eyeball the town blob and canyon),
   basemap.png (hillshade x fuel-group colors, the offline base layer per CONTRACT.md).
@@ -118,57 +120,37 @@ def check_fuel_prefire(fuel: np.ndarray, geom: dict, cfg: dict, town: str) -> di
 
 # --- buildings ------------------------------------------------------------------
 
-def load_buildings(raw: Path, geom: dict, fuel: np.ndarray, town: str) -> tuple[dict, dict]:
-    """Returns ({row, col, lat, lon arrays}, info). Fewer than 500 real buildings ->
-    proxy points at built-up (urban NB91) cell centers, buildings_proxy=true."""
-    pts = []
-    source = "overpass-failed"
-    cache = raw / "buildings_overpass.json"
-    if cache.exists():
-        js = json.loads(cache.read_text(encoding="utf-8"))
-        source = js.get("_source", "overpass")
-        for el in js.get("elements", []):
-            if el.get("type") == "node" and "lat" in el:
-                lat, lon = el["lat"], el["lon"]
-            else:
-                c = el.get("center")
-                if not c:
-                    continue
-                lat, lon = c["lat"], c["lon"]
-            pts.append((lat, lon))
-
-    rows, cols = geom["rows"], geom["cols"]
-    keep = []
-    for lat, lon in pts:
-        r, c = common.lonlat_to_rowcol(geom, lon, lat)
-        if 0 <= r < rows and 0 <= c < cols:
-            keep.append((r, c, lat, lon))
-
-    proxy = len(keep) < 500
-    if proxy:
-        common.log_event("grid", town,
-                         f"only {len(keep)} OSM buildings in-grid - using built-up "
-                         f"cells as proxy structures (buildings_proxy=true)")
-        print(f"  only {len(keep)} OSM buildings -> proxy from urban cells")
-        rr, cc = np.nonzero(fuel == 91)
-        keep = []
-        for r, c in zip(rr.tolist(), cc.tolist()):
-            lon, lat = common.rowcol_to_lonlat(geom, r, c)
-            keep.append((r, c, lat, lon))
-        source = "proxy: built-up land-cover cells"
-        if not keep:
-            sys.exit("no OSM buildings AND no urban cells - nothing to protect; "
-                     "check the town bbox")
-
-    keep.sort()
-    arr = {
-        "row": np.array([k[0] for k in keep], dtype=np.int32),
-        "col": np.array([k[1] for k in keep], dtype=np.int32),
-        "lat": np.array([k[2] for k in keep], dtype=np.float64),
-        "lon": np.array([k[3] for k in keep], dtype=np.float64),
-    }
-    info = {"source": source, "count": len(keep), "proxy": proxy}
-    print(f"  buildings: {info['count']} ({info['source']})")
+def build_proxy_buildings(geom: dict, fuel: np.ndarray, cfg: dict) -> tuple[dict, dict]:
+    """Homes = developed-land (urban NB91) cells scaled to the town's pre-fire home
+    count (config homes_estimate; falls back to one per cell). Points are spread
+    deterministically (seeded) with sub-cell jitter for display; row/col stays the
+    containing cell so 'is this home burning' is one grid lookup (CONTRACT.md)."""
+    rr, cc = np.nonzero(fuel == 91)
+    n_urban = int(rr.size)
+    if n_urban == 0:
+        sys.exit("no urban (NB91) cells - nothing to protect; check the town bbox")
+    target = int(cfg.get("homes_estimate") or n_urban)
+    rng = np.random.default_rng(0)
+    counts = np.full(n_urban, target // n_urban, dtype=np.int32)
+    counts[rng.permutation(n_urban)[: target - int(counts.sum())]] += 1
+    row = np.repeat(rr, counts).astype(np.int32)
+    col = np.repeat(cc, counts).astype(np.int32)
+    rowf = (row + rng.uniform(-0.38, 0.38, row.size)).astype(np.float64)
+    colf = (col + rng.uniform(-0.38, 0.38, col.size)).astype(np.float64)
+    x = geom["west_m"] + (colf + 0.5) * geom["cell_merc"]
+    y = geom["north_m"] - (rowf + 0.5) * geom["cell_merc"]
+    lon = np.degrees(x / common.R_MERC)
+    lat = np.degrees(2.0 * np.arctan(np.exp(y / common.R_MERC)) - np.pi / 2.0)
+    order = np.lexsort((col, row))
+    arr = {"row": row[order], "col": col[order],
+           "rowf": rowf[order].astype(np.float32), "colf": colf[order].astype(np.float32),
+           "lat": lat[order], "lon": lon[order]}
+    info = {"source": "proxy: developed-land cells scaled to pre-fire home count",
+            "count": target, "proxy": True, "urban_cells": n_urban,
+            "simplification": "Homes are estimated from developed-land cells at "
+                              "2018 density, not individual footprints."}
+    print(f"  homes: {target} proxy points over {n_urban} urban cells "
+          f"(homes_estimate; OSM stays cached but unused)")
     return arr, info
 
 
@@ -213,9 +195,8 @@ def write_pngs(out: Path, geom: dict, cfg: dict, fuel: np.ndarray, elev: np.ndar
     img = Image.fromarray(fuel_color_image(fuel), "RGB").resize(
         (cols * scale, rows * scale), Image.NEAREST)
     draw = ImageDraw.Draw(img)
-    for r, c in zip(bld["row"].tolist(), bld["col"].tolist()):
-        x, y = c * scale, r * scale
-        draw.rectangle([x, y, x + 1, y + 1], fill=(176, 0, 32))
+    for rf, cf in zip(bld["rowf"].tolist(), bld["colf"].tolist()):
+        draw.point((int((cf + 0.5) * scale), int((rf + 0.5) * scale)), fill=(176, 0, 32))
     for key, color in (("ignition", (255, 0, 0)), ("town_center", (0, 60, 255))):
         r, c = common.lonlat_to_rowcol(geom, cfg[key]["lon"], cfg[key]["lat"])
         x, y = c * scale, r * scale
@@ -224,8 +205,8 @@ def write_pngs(out: Path, geom: dict, cfg: dict, fuel: np.ndarray, elev: np.ndar
         draw.line([x, y - 14, x, y + 14], fill=color, width=1)
     lines = [f"{cfg['name']}  {rows}x{cols} @ {geom['cell_m']:g} m",
              f"fuel: {fuel_product}",
-             f"buildings: {bld_info['count']}"
-             + (" (PROXY)" if bld_info["proxy"] else " (OSM)"),
+             f"homes: {bld_info['count']}"
+             + (" (proxy @ 2018 density)" if bld_info["proxy"] else " (OSM)"),
              "red circle = ignition, blue = town center"]
     draw.multiline_text((7, 7), "\n".join(lines), fill=(255, 255, 255))
     draw.multiline_text((6, 6), "\n".join(lines), fill=(0, 0, 0))
@@ -306,7 +287,7 @@ def run(town: str, cell_m: float = 60.0, quick: bool = False) -> None:
                                        "layer; alignment_check.png needs a hard look")
         print("  WARNING: zero urban (NB91) cells - check alignment_check.png closely")
 
-    bld, bld_info = load_buildings(raw, geom, fuel, town)
+    bld, bld_info = build_proxy_buildings(geom, fuel, cfg)
 
     np.save(out / "fuel.npy", fuel)
     np.save(out / "elev.npy", elev)

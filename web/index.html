@@ -27,7 +27,17 @@
     </div>
     <div class="stat">
       <div class="stat-value" id="stat-saved">–</div>
-      <div class="stat-label"><span class="swatch" style="background:#3ddc84"></span>houses saved</div>
+      <div class="stat-label"><span class="swatch" style="background:#3ddc84"></span>homes saved</div>
+    </div>
+  </section>
+
+  <section id="homes">
+    <div class="control-head"><label>Homes</label><span class="control-value mono" id="waffle-caption"></span></div>
+    <canvas id="waffle"></canvas>
+    <div id="waffle-legend" class="mono">
+      <span><i class="sw sw-grey"></i>STANDING</span>
+      <span><i class="sw sw-red"></i>BURNED</span>
+      <span><i class="sw sw-saved"></i>SAVED</span>
     </div>
   </section>
 
@@ -45,10 +55,11 @@
     </div>
   </section>
 
-  <section class="control">
-    <div class="control-head"><label>Houses saved vs $ spent</label><span class="control-value" id="curve-readout"></span></div>
-    <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative houses saved"></svg>
-  </section>
+  <details id="explore">
+    <summary>Explore budgets — budget &#8594; homes saved</summary>
+    <p id="curve-sentence" class="mono"></p>
+    <svg id="curve" role="img" aria-label="Cumulative cost versus cumulative homes saved"></svg>
+  </details>
 
   <details id="simplifications">
     <summary>Real vs simplified</summary>

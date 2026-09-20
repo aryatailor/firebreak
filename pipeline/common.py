@@ -92,18 +92,18 @@ def run_stage(stage: str, town: str, fn) -> None:
 
 # --- EPSG:3857 (spherical web mercator - exact formulas, no pyproj needed) ------
 
-_R = 6378137.0
+R_MERC = 6378137.0
 
 
 def lonlat_to_merc(lon: float, lat: float) -> tuple[float, float]:
-    x = math.radians(lon) * _R
-    y = _R * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+    x = math.radians(lon) * R_MERC
+    y = R_MERC * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
     return x, y
 
 
 def merc_to_lonlat(x: float, y: float) -> tuple[float, float]:
-    lon = math.degrees(x / _R)
-    lat = math.degrees(2 * math.atan(math.exp(y / _R)) - math.pi / 2)
+    lon = math.degrees(x / R_MERC)
+    lat = math.degrees(2 * math.atan(math.exp(y / R_MERC)) - math.pi / 2)
     return lon, lat
 
 

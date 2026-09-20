@@ -5,6 +5,7 @@
   "ignition": {"lat": 39.794, "lon": -121.435, "label": "Pulga (Camp Fire origin)"},
   "wind": {"speed_mph": 35, "from_deg": 45},
   "town_center": {"lat": 39.7596, "lon": -121.6219},
+  "homes_estimate": 11000,
   "horizon_min": 720,
   "budgets": [500000, 1000000, 2000000, 3000000, 5000000]
 }
