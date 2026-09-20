@@ -68,13 +68,39 @@ body.has-towns #caption { top: 76px; }
 }
 #caption-btn:hover { background: rgba(61, 220, 132, .08); }
 #caption-btn[hidden] { display: none; }
-#caption-skip {
-  margin-top: 10px; padding: 0; display: block; cursor: pointer;
-  background: none; border: none; color: var(--muted); font-family: var(--mono);
-  font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
-}
-#caption-skip:hover { color: var(--ink); }
 body.intro #caption, body.intro #point-arrow { display: none; }
+
+/* Cinematic opening: black, then the map behind it, one crawl line at a time */
+#crawl {
+  position: fixed; inset: 0; z-index: 1900; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  background: #000; transition: background-color 2s ease;
+}
+#crawl[hidden] { display: none; }
+#crawl.clear { background: rgba(0, 0, 0, .28); }
+#crawl-line {
+  margin: 0; max-width: 62ch; padding: 0 32px;
+  font-family: var(--sans); font-weight: 400;
+  font-size: clamp(22px, 2.6vw, 40px); line-height: 1.45; color: #ffffff;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, .9);
+  opacity: 0; transition: opacity .7s ease;
+}
+#crawl-line.on { opacity: 1; }
+
+/* Skip: bottom right, always reachable while the story runs */
+#skip {
+  position: fixed; right: 356px; bottom: 16px; z-index: 1950; cursor: pointer;
+  background: rgba(10, 11, 13, .7); border: 1px solid var(--line); border-radius: 2px;
+  color: var(--muted); font-size: 9.5px; letter-spacing: .12em;
+  text-transform: uppercase; padding: 6px 10px;
+}
+#skip:hover { color: var(--ink); border-color: var(--muted); }
+#skip[hidden] { display: none; }
+body.intro #skip, body.crawl #skip { right: 16px; }
+body.crawl #panel, body.crawl #legend, body.crawl #brand,
+body.crawl #town-select, body.crawl .leaflet-control-container,
+body.crawl .ign, body.crawl #timeline { display: none; }
+body.crawl #map { inset: 0; }   /* full bleed while the opening plays */
 
 /* arrow pointing at the budget slider (pick state) */
 #point-arrow {
@@ -163,6 +189,7 @@ input[type=range]::-moz-range-thumb {
 body:not([data-flow="pick"]):not([data-flow="done"]):not([data-flow="free"]) #budget-block {
   opacity: .35; pointer-events: none;
 }
+body.intro #skip { display: none; }
 body:not([data-flow="free"]) #time-block,
 body:not([data-flow="free"]) #explore {
   opacity: .35; pointer-events: none;

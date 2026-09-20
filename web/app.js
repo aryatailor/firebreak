@@ -646,7 +646,7 @@ async function main() {
   const map = L.map('map', { zoomSnap: 0.25, maxZoom: 17 });
   map.fitBounds(bounds, { padding: [10, 10] });
   map.createPane('fire').style.zIndex = 405;
-  window._fb = { map };   // debug/test handle
+  window._fb = { map, bounds: b, rows, cols };   // debug/test handle
 
   const windDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(meta.wind.from_deg / 45) % 8];
   const statusBits = mode => [
@@ -736,7 +736,11 @@ async function main() {
   const audio = makeAudio();
   const state = { t: 0, budget: 0, step: 0, arrival: baseGrid };
   let maxFresh = 1;
-  let flow = 'armed';   // walkthrough state (see setWalk)
+  let flow = 'crawl';   // walkthrough state (see setWalk)
+  const skipEl = $('skip');
+  const STATE_ZOOM = 6;                       // state scale, where the opening starts
+  const townCenter = bounds.getCenter();      // the whole burn area, town included
+  const targetZoom = map.getBoundsZoom(bounds, false, L.point(24, 24));
   let lastCounts = { hit: 0, saved: 0 };
 
   const fmtInt = n => n.toLocaleString();
@@ -792,7 +796,7 @@ async function main() {
     // first drag in the pick state reveals the replay button
     if (flow === 'pick' && state.budget > 0 && capBtn.hidden) {
       capBtn.hidden = false;
-      capBtn.textContent = 'Run it again →';
+      capBtn.textContent = 'Run it again';
     }
   }
 
@@ -866,9 +870,6 @@ async function main() {
   const capEl = $('caption'), capText = $('caption-text'), capBtn = $('caption-btn');
   const arrowEl = $('point-arrow');
   const townName = meta.town.split(',')[0];
-  const openerLine = meta.town.startsWith('Paradise')
-    ? 'Paradise, California. 6:30 AM, November 8, 2018. The Camp Fire started here.'
-    : meta.story;
   function setCaption(text, btn) {
     capEl.hidden = !text;
     capText.textContent = text || '';
@@ -882,24 +883,37 @@ async function main() {
       arrowEl.style.top = `${r.top + 26}px`;
     }
   }
+  function enterFreePlay() {
+    setCaption('Now start your own fire.', null);
+    if (typeof freePlayReady === 'function') freePlayReady();
+  }
   function setWalk(f) {
     flow = f;
     document.body.dataset.flow = f;
+    document.body.classList.toggle('crawl', f === 'crawl');
     showGhost(f === 'burn1' || f === 'done');
     pointAtBudget(f === 'pick');
-    if (f === 'armed') setCaption(openerLine, 'Watch it happen →');
-    if (f === 'burn0') setCaption('Twelve hours of fire in twenty seconds. Each red square is a home.', null);
+    skipEl.hidden = f === 'free';
+    skipEl.textContent = f === 'crawl' ? 'Skip intro' : 'Free play';
+    if (f === 'burn0') {
+      setCaption('This is what happened.', null);
+      crawlTimers.push(setTimeout(() => {
+        if (flow === 'burn0') {
+          setCaption('Twelve hours of fire in twenty seconds. Each red square is a home.', null);
+        }
+      }, 2600));
+    }
     if (f === 'pick') setCaption(
       `${lastCounts.hit.toLocaleString()} of ${nB.toLocaleString()} homes gone. ` +
       `What would a budget have bought?`, null);
-    if (f === 'burn1') setCaption('Same fire. Your fuel breaks are the pale strips of cleared ground.', null);
+    if (f === 'burn1') setCaption('Same fire. The pale strips are cleared ground.', null);
     if (f === 'done') {
       const st = model.steps[state.step];
       const mb = st.minutesBought == null ? 0 : Math.round(st.minutesBought);
       setCaption(`${fmtMoney(st.cost)} · ${lastCounts.saved.toLocaleString()} homes saved · ` +
         `${mb} min evacuation time.`, 'Try another budget');
     }
-    if (f === 'free') setCaption(null, null);
+    if (f === 'free') { setCaption(null, null); enterFreePlay(); }
     updateStats();
   }
   function onRunEnd() {
@@ -908,12 +922,61 @@ async function main() {
   }
   capBtn.onclick = e => {
     e.stopPropagation();
-    if (flow === 'armed') { setWalk('burn0'); startPlay(); }
-    else if (flow === 'pick') { setWalk('burn1'); state.t = 0; timeEl.value = '0'; render(); startPlay(); }
-    else if (flow === 'done') { setWalk('pick'); setCaption(
-      `Drag the budget slider, then run it again.`, 'Run it again →'); }
+    if (flow === 'pick') { setWalk('burn1'); state.t = 0; timeEl.value = '0'; render(); startPlay(); }
+    else if (flow === 'done') {
+      setWalk('pick');
+      setCaption('Pick another budget, then run it again.', 'Run it again');
+    }
   };
-  $('caption-skip').onclick = e => { e.stopPropagation(); setWalk('free'); };
+
+  /* The opening: black, the map fades in at state scale and flies to the town over
+     10 s while meta.crawl plays one line at a time, then the fire starts. */
+  const crawlEl = $('crawl'), crawlLine = $('crawl-line');
+  const crawlLines = (Array.isArray(meta.crawl) && meta.crawl.length)
+    ? meta.crawl.slice(0, 6)
+    : meta.story.split(/(?<=[.?])\s+/).filter(Boolean).slice(0, 4);
+  let crawlTimers = [];
+  function clearCrawl() {
+    crawlTimers.forEach(clearTimeout);
+    crawlTimers = [];
+    crawlEl.hidden = true;
+    crawlLine.classList.remove('on');
+  }
+  function startBurn() {
+    clearCrawl();
+    setWalk('burn0');            // drops the crawl class, so the panel takes its space
+    map.invalidateSize();        // then reframe for the narrower map
+    map.setView(townCenter, map.getBoundsZoom(bounds, false, L.point(24, 24)), { animate: false });
+    state.t = 0; timeEl.value = '0';
+    render();
+    startPlay();
+  }
+  function runOpening() {
+    setWalk('crawl');
+    crawlEl.hidden = false;
+    crawlEl.classList.remove('clear');
+    map.invalidateSize();        // crawl runs full bleed
+    map.setView(townCenter, STATE_ZOOM, { animate: false });
+    const at = (ms, fn) => crawlTimers.push(setTimeout(fn, ms));
+    at(350, () => {
+      crawlEl.classList.add('clear');                       // map reveals behind
+      map.flyTo(townCenter, targetZoom, { duration: 10, easeLinearity: 0.25 });
+    });
+    const HOLD = 2500, FADE = 700;
+    crawlLines.forEach((line, i) => {
+      at(600 + i * HOLD, () => {
+        crawlLine.textContent = line;
+        crawlLine.classList.add('on');
+      });
+      at(600 + i * HOLD + (HOLD - FADE), () => crawlLine.classList.remove('on'));
+    });
+    at(600 + crawlLines.length * HOLD, startBurn);
+  }
+  skipEl.onclick = e => {
+    e.stopPropagation();
+    if (flow === 'crawl') startBurn();
+    else { clearCrawl(); setWalk('free'); }
+  };
 
   // --- break hover: cell → active break → green highlight + mono tooltip ---
   const tip = $('break-tip');
@@ -949,7 +1012,7 @@ async function main() {
     tip.hidden = true;
   });
 
-  // Intro: full-bleed title card over the undimmed, still map. Click anywhere skips.
+  // Title card. Clicking anywhere on it enters; that click is the audio gesture.
   let startedApp = false;
   function startApp(withAudio) {
     if (startedApp) return;
@@ -960,15 +1023,42 @@ async function main() {
     intro.classList.add('gone');
     setTimeout(() => intro.remove(), 700);
     map.invalidateSize();
-    map.fitBounds(bounds, { padding: [10, 10] });
-    setWalk('armed');   // walkthrough: fire waits for "Watch it happen →"
+    runOpening();
   }
   $('intro').addEventListener('click', () => startApp(true));
 
-  setWalk('armed');
+  /* Test hook: where the grid canvas puts a home versus where Leaflet puts it.
+     Uses an interior home (edge homes are clamped so their ring stays on canvas).
+     Residual is bounded by half a grid pixel, which is what drawing homes as grid
+     pixels costs; it is fixed per home and does not grow or slide with zoom. */
+  const probeIdx = (() => {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < nB; i++) {
+      const r = (cells[i] / cols) | 0, c = cells[i] % cols;
+      const d = Math.abs(r - rows / 2) + Math.abs(c - cols / 2);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  })();
+  window._fb.homeProbe = () => {
+    const cv = document.querySelector('.fire-canvas');
+    if (!cv || !nB) return null;
+    const r = cv.getBoundingClientRect();
+    const mr = $('map').getBoundingClientRect();
+    const [lon, lat] = feats[probeIdx].geometry.coordinates;
+    const cx = r.left + ((hx[probeIdx] + 1) / (cols * 2)) * r.width;
+    const cy = r.top + ((hy[probeIdx] + 1) / (rows * 2)) * r.height;
+    const pt = map.latLngToContainerPoint([lat, lon]);
+    const gridPx = r.height / (rows * 2);
+    return {
+      dx: +(cx - (mr.left + pt.x)).toFixed(2), dy: +(cy - (mr.top + pt.y)).toFixed(2),
+      gridPx: +gridPx.toFixed(2),
+    };
+  };
+
   setBudgetValue(0, true);
   soundLabel();
-  if (SKIP_INTRO) startApp(false);
+  if (SKIP_INTRO) { document.body.classList.remove('intro'); $('intro').remove(); startBurn(); }
 }
 
 /* Title-card heat haze: drift the turbulence seed and baseFrequency so the red
