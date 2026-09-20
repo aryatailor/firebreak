@@ -1,6 +1,8 @@
 pipeline/data_raw/
 *.tif
 *.zip
+*.npy
+*.npz
 __pycache__/
 *.pyc
 .venv/

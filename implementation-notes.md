@@ -6,7 +6,8 @@ the plan — conservative option taken, reason logged).
 
 ## Plan
 
-Status: **awaiting Zach's approval — no pipeline code until then.**
+Status: **approved by Zach 2026-09-19**, with two amendments folded in below:
+§2 ambiguity default (LF 2014, ≤ 10 min on the check) and the §0 story string.
 Decisions most likely to change are first; boring mechanics at the bottom.
 
 ### 0. Town config (`--town`) — new requirement, 2026-09-19
@@ -16,7 +17,7 @@ Decisions most likely to change are first; boring mechanics at the bottom.
 
   ```jsonc
   { "name": "Paradise, CA",
-    "story": "<one line for meta.story>",
+    "story": "What if Paradise had cut fuel breaks before November 8, 2018?",
     "bounds": {"west": -121.70, "south": 39.68, "east": -121.38, "north": 39.86},
     "ignition": {"lat": 39.794, "lon": -121.435, "label": "Pulga (Camp Fire origin)"},
     "wind": {"speed_mph": 35, "from_deg": 45},
@@ -66,6 +67,9 @@ Decisions most likely to change are first; boring mechanics at the bottom.
   found, minus two years of growth". Either way the demo re-runs the 2018 event;
   `meta.data.fuel` records the product + version actually used.
 - The LFPS ArcGIS endpoint the package calls was probed today and answers (HTTP 200).
+- **Amendment (Zach, at approval)**: if the Remap-vs-LF 2014 check is ambiguous,
+  default to `140FBFM40` and move on — spend no more than 10 minutes on it; the
+  choice and the check's numbers are recorded in `meta.data`.
 
 ### 3. Spread-rate model (ros.py)
 
@@ -216,6 +220,11 @@ solver shape (§7), schema freeze (§8). Everything else is mechanics.**
 
 ## Decisions
 
+- Repo was created private; flipped **public** at approval time (2026-09-19),
+  `gh repo edit --visibility public`.
+- `pipeline/out/<town>/` is committed except bulky arrays (`*.npy`/`*.npz`
+  gitignored) — check PNGs and grid_meta.json ride along with each stage commit;
+  raw downloads stay out of git entirely (`pipeline/data_raw/` ignored).
 - Leaflet 1.9.4 vendored from unpkg into `web/vendor/leaflet/` (js + css + images) —
   the demo laptop has unreliable wifi; no CDN anywhere.
 - Mock generator is pure-stdlib Python (no numpy/PIL) so `web/mock/` can be

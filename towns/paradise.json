@@ -1,0 +1,10 @@
+{
+  "name": "Paradise, CA",
+  "story": "What if Paradise had cut fuel breaks before November 8, 2018?",
+  "bounds": {"west": -121.70, "south": 39.68, "east": -121.38, "north": 39.86},
+  "ignition": {"lat": 39.794, "lon": -121.435, "label": "Pulga (Camp Fire origin)"},
+  "wind": {"speed_mph": 35, "from_deg": 45},
+  "town_center": {"lat": 39.7596, "lon": -121.6219},
+  "horizon_min": 720,
+  "budgets": [500000, 1000000, 2000000, 3000000, 5000000]
+}
