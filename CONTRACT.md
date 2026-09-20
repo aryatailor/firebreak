@@ -148,6 +148,20 @@ cell.
 
 Colors used in `basemap.png` fuel tinting, for the legend UI.
 
+## web/towns/index.json
+
+The town selector. An array, one entry per available town, in display order:
+
+```jsonc
+[ {"id":"paradise","name":"Paradise, CA","event":"Camp Fire · Nov 8, 2018",
+   "data_dir":"data/"} ]
+```
+
+`data_dir` is relative to `web/` and contains the full file set described in this
+document (Paradise lives at the legacy `data/`; later towns at
+`towns/<id>/`). The pipeline appends an entry when a new town exports
+successfully.
+
 ## File inventory
 
 `web/data/` (and `web/mock/`) contains exactly: `meta.json`, `baseline.json`,
