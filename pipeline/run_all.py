@@ -1,41 +1,53 @@
 """run_all.py - the whole pipeline chain: fetch -> grid -> sim -> calibrate ->
 candidates -> solve -> export.
 
-Stage 0/orchestrator of the Firebreak pipeline (see implementation-notes.md "## Plan").
+Orchestrator of the Firebreak pipeline (see implementation-notes.md "## Plan").
 
-- Runs every stage in order with a try/except at each stage boundary that prints the
-  stage name, the input it was given, and the exception, then appends to
-  pipeline/run_log.md. No silent failures, no bare excepts.
-- --quick uses cached downloads and a coarser grid for a fast end-to-end smoke run.
+- Runs every implemented stage in order inside the fail-loud stage boundary
+  (prints stage + input + exception, appends to pipeline/run_log.md, re-raises).
+- --quick uses cached downloads and a 2x coarser grid for a fast end-to-end run.
+- Stops with a clear message at the first stage that is not implemented yet.
 
-Final verification once Phase 1 is implemented:
-    python pipeline/run_all.py --quick
-    python -m http.server -d web 8000    # the fire shows on the map
-
-STUB - pipeline code lands after the Phase 1 plan is approved. Only --help works.
+Verify (today): python pipeline/run_all.py --town paradise
 """
 from __future__ import annotations
 
 import argparse
 import sys
 
+import common
+import fetch_data
+import build_grid
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="run_all.py",
-        description="Run the whole pipeline: fetch -> grid -> sim -> calibrate -> candidates -> solve -> export.",
-    )
+        description="Run the whole pipeline: fetch -> grid -> sim -> calibrate -> "
+                    "candidates -> solve -> export.")
+    p.add_argument("--town", default="paradise",
+                   help="name of towns/<town>.json (default: paradise)")
     p.add_argument("--quick", action="store_true",
-                   help="cached downloads + coarser grid (fast end-to-end smoke run)")
+                   help="cached downloads + coarser grid (fast end-to-end run)")
     p.add_argument("--skip-fetch", action="store_true",
-                   help="assume pipeline/data_raw/ is already populated")
+                   help="assume pipeline/data_raw/<town>/ is already populated")
+    p.add_argument("--force", action="store_true",
+                   help="re-download inputs even if cached")
     return p
 
 
 def main(argv=None) -> None:
-    build_parser().parse_args(argv)
-    sys.exit("run_all.py is a stub - pipeline code lands after the Phase 1 plan is approved "
-             "(see implementation-notes.md).")
+    args = build_parser().parse_args(argv)
+
+    if not args.skip_fetch:
+        common.run_stage("fetch", args.town,
+                         lambda: fetch_data.run(args.town, force=args.force))
+    common.run_stage("grid", args.town,
+                     lambda: build_grid.run(args.town, quick=args.quick))
+
+    print("\nrun_all: fetch + grid done. Later stages (simulate, calibrate, "
+          "candidates, solve, export) land next - see implementation-notes.md.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
