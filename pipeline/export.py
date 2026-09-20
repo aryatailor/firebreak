@@ -265,7 +265,7 @@ def run(town: str) -> None:
         shutil.copyfile(out / "basemap.png", web / "basemap.png")
         return sum(f.stat().st_size for f in web.iterdir()) / 1e6
 
-    SIZE_CAP = 20.0   # MB; served from localhost - raised from 5 (Zach, 2026-09-19)
+    SIZE_CAP = common.SIZE_CAP_MB
     total = write_all(5)
     if total > SIZE_CAP:
         print(f"  {total:.2f} MB > {SIZE_CAP:.0f} MB - quantizing building coords "

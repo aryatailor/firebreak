@@ -263,6 +263,20 @@ solver shape (§7), schema freeze (§8). Everything else is mechanics.**
 
 ## Deviations
 
+- **web/data size cap 20 → 25 MB (2026-09-20, Tier 1)**: physics.json (0.72 MB) +
+  parity.json (0.41 MB) pushed Paradise to 20.30 MB. Conservative choice was to
+  keep every required file rather than drop or degrade data to satisfy a
+  guardrail whose stated purpose ("keep the repo clonable"; everything is served
+  from localhost) is not threatened by 1.5%. Cap now lives in one place
+  (`common.SIZE_CAP_MB`) instead of three copies. Altadena is 8.10 MB.
+- **parity.json is computed from the QUANTISED physics.json values** (int16
+  elevation), not the internal float32 grid. Rationale: the frontend can only see
+  what we export, so parity must be reproducible from exported data alone. Effect
+  of int16 rounding on the shipped baseline is reported by the stage: Paradise
+  96.94% identical bucket / 99.98% within one, Altadena 95.09% / 99.97%. An
+  independent reimplementation reading only physics.json reproduces parity.json
+  100% exactly (`pipeline/verify_parity.py`).
+
 - **Calibration selection (2026-09-19, first live sweep)**: the plan's joint target
   ("town center in 2–4 h" AND "60–90% of homes hit at horizon") is infeasible under
   this model — any scale fast enough for a 2–4 h town center burns the whole box

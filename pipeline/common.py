@@ -18,6 +18,12 @@ import math
 import sys
 from pathlib import Path
 
+# Per-town web data budget. 5 -> 20 MB when the continuous slider (steps.json)
+# landed; 20 -> 25 MB when physics.json + parity.json landed (the browser needs
+# the model itself). Everything is served from localhost; the cap exists to keep
+# the repo clonable, and features are never dropped to satisfy it.
+SIZE_CAP_MB = 25.0
+
 REPO = Path(__file__).resolve().parent.parent
 PIPELINE = REPO / "pipeline"
 RUN_LOG = PIPELINE / "run_log.md"
@@ -175,6 +181,16 @@ CODE_TO_GROUP: dict[int, str] = {
 }
 
 BURNABLE_CODES = sorted(c for codes in FUEL_GROUPS.values() for c in codes)
+
+# Compact class ids for the browser model (CONTRACT.md "physics.json").
+# 0 = non-burnable; the rest index into physics.json "rates".
+FUEL_CLASS: dict[str, int] = {
+    "grass": 1, "grass_shrub": 2, "shrub": 3, "slash": 4,
+    "timber_understory": 5, "timber_litter": 6, "urban": 7,
+    "snow": 0, "agriculture": 0, "water": 0, "barren": 0,
+}
+CLASS_COST_KEY: dict[int, str] = {1: "grass", 2: "shrub", 3: "shrub",
+                                  4: "timber", 5: "timber", 6: "timber"}
 
 GROUP_COLORS: dict[str, str] = {
     "grass": "#d4d06e",

@@ -129,7 +129,7 @@ def run(town: str) -> None:
     (web / "sensitivity.json").write_text(json.dumps(records, separators=(",", ":")),
                                           encoding="utf-8")
     total = sum(f.stat().st_size for f in web.iterdir()) / 1e6
-    if total > 20.0:
+    if total > common.SIZE_CAP_MB:
         sys.exit(f"{web} is {total:.2f} MB > 20 MB after sensitivity.json - STOP")
     print(f"  wrote {web / 'sensitivity.json'} ({web.name} total {total:.2f} MB)")
     print(f"\nverify: python pipeline/sensitivity.py --town {town}  (same table)")

@@ -148,6 +148,96 @@ cell.
 
 Colors used in `basemap.png` fuel tinting, for the legend UI.
 
+## physics.json — everything needed to run the fire in the browser
+
+Present in every town data dir. This is the complete model: with these numbers and
+the algorithm below, a JS implementation reproduces the Python simulation.
+
+```jsonc
+{ "grid": {"rows":R,"cols":C,"cell_m":60},
+  "fuel_class_b64": "<uint8 per cell, rows*cols values, row-major, top row north>",
+  "elev_m_b64": "<int16 little-endian per cell, metres, same order>",
+  "rates": {"1":1.0,"2":0.65,"3":0.45,"4":0.35,"5":0.30,"6":0.12,"7":0.08},
+  "scale_m_per_min": 30.0, "k_w": 0.45,
+  "wind": {"speed_mph":35,"from_deg":45},
+  "slope_formula": "2^(theta_deg/10) clamped to [0.5, 8], theta = uphill angle along travel direction",
+  "wind_formula": "exp(k_w * (v_mph/10) * cos(delta)), delta = angle between travel direction and downwind",
+  "edge_weight": "dist_m / (min(base_i, base_j) * f_slope * f_wind * scale_m_per_min); dist 60 orthogonal, 60*sqrt(2) diagonal",
+  "break_mult": 0.05, "horizon_min": 720, "bucket_min": 5,
+  "cost_per_acre": {"grass":500,"shrub":1500,"timber":2500}, "cell_acres": 0.89,
+  "homes_rc": [[row,col], ...],
+  "ignition_rc": [row,col] }
+```
+
+**Fuel classes** (`fuel_class_b64`): `0` non-burnable (water, snow, agriculture,
+barren — fire never enters), `1` grass, `2` grass-shrub, `3` shrub, `4` slash,
+`5` timber-understory, `6` timber-litter, `7` urban/developed. Classes 1–7 all
+have an entry in `rates`; class 0 has none and is impassable.
+
+`homes_rc` is one `[row, col]` per home, aligned index-for-index with
+`buildings.geojson` features. `cost_per_acre` keys map from class:
+1 → `grass`, 2 and 3 → `shrub`, 4, 5 and 6 → `timber`; class 7 is never clearable.
+
+### The algorithm, exactly
+
+Fire arrival time is the **minimum travel time** from the ignition cell over a
+directed 8-neighbour graph. Dijkstra, one source, no heuristic.
+
+1. **Neighbours**, in this order (`dr`, `dc`; `dr +1` = south, `dc +1` = east):
+   `(-1,-1) (-1,0) (-1,1) (0,-1) (0,1) (1,-1) (1,0) (1,1)`.
+   Neighbours outside the grid have no edge. Order does not affect the result;
+   it is fixed only so implementations can be diffed.
+2. **Distance** for that edge: `dist_m = cell_m * hypot(dr, dc)` — exactly
+   `cell_m` orthogonally, `cell_m * sqrt(2)` diagonally. This is **ground**
+   distance; never use the EPSG:3857 cell size here.
+3. **Base rate** of a cell: `rates[fuel_class]`, or `0` for class 0. If the cell
+   is cleared (a fuel break) multiply it by `break_mult`.
+4. **Slope factor** for edge i→j:
+   `dz = elev[j] - elev[i]` (metres, positive = uphill),
+   `theta_deg = degrees(atan(dz / dist_m))`,
+   `f_slope = min(max(2 ** (theta_deg / 10), 0.5), 8)`.
+5. **Wind factor** for edge i→j — depends only on direction, so it is one of 8
+   constants: `bearing = atan2(dc, -dr)` (radians, compass sense),
+   `downwind = radians((wind.from_deg + 180) mod 360)`,
+   `f_wind = exp(k_w * (wind.speed_mph / 10) * cos(bearing - downwind))`.
+6. **Edge weight** (minutes):
+   `dist_m / (min(base_i, base_j) * f_slope * f_wind * scale_m_per_min)`.
+   If `min(base_i, base_j)` is 0 the edge does not exist.
+7. **Dijkstra** from `ignition_rc`; the result is arrival minutes per cell.
+   Unreached cells are infinite. Ties need no tie-breaking rule — equal-distance
+   paths give equal arrival times, which is all that is observable.
+
+Consequences worth stating, because they are easy to get wrong:
+
+- **Cleared cells slow fire in both directions.** Because the edge uses
+  `min(base_i, base_j)`, multiplying a cell's base rate by `break_mult` slows
+  every edge **into** it and every edge **out of** it. There is no separate
+  incoming/outgoing handling, and a 2-cell-wide break cannot be crossed
+  diagonally in one step at full speed.
+- **Urban cells burn.** Class 7 is burnable at `rates["7"]` (the calibrated
+  structure-to-structure rate), not a wall. Only class 0 blocks fire.
+- **A home is "reached"** when `arrival[row * cols + col] <= horizon_min`, using
+  that home's `homes_rc` entry. Homes in the same cell share a fate.
+- **Bucket encoding** (`arrival_b64` in steps.json, and parity.json):
+  `round(minutes / bucket_min)`, and exactly `255` when the cell is unreachable
+  or arrives after `horizon_min`.
+
+## parity.json — proof the JS sim matches Python
+
+```jsonc
+{ "bucket_min": 5, "horizon_min": 720,
+  "baseline_b64": "<uint8 buckets, no breaks>",
+  "break_cells": [[row,col], ...],
+  "break_b64": "<uint8 buckets, with exactly those cells cleared>",
+  "target": "at least 99% of cells within 1 bucket of these arrays" }
+```
+
+Both arrays are computed by Python **from the quantised values in physics.json**
+(int16 elevation, not the internal float grid), so an exact reimplementation
+should match nearly cell-for-cell rather than merely closely. `break_cells` is a
+2-cell-wide strip; apply it exactly as step 3 above and compare against
+`break_b64`.
+
 ## sensitivity.json (optional)
 
 May be absent — the page must not require it. Wind sensitivity of the shipped
