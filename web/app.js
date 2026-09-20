@@ -1,9 +1,10 @@
 /* Firebreak — renders web/<DATA_DIR>/ (CONTRACT.md) as the one-screen demo.
-   No frameworks, no CDN; Leaflet is vendored. Switching to the real pipeline output
-   is the one-line DATA_DIR flip. URL flags: ?offline=1 forces the offline basemap,
-   ?intro=0 skips the title card (testing). */
+   No frameworks, no CDN; Leaflet is vendored. DATA_DIR defaults to the real
+   pipeline output; towns/index.json (multi-town) or ?data=mock override it.
+   URL flags: ?offline=1 forces the offline basemap, ?intro=0 skips the title
+   card, ?town=<id> picks a town, ?data=<dir> forces a data dir (testing). */
 
-const DATA_DIR = 'mock';
+let DATA_DIR = new URLSearchParams(location.search).get('data') || 'data';
 const UNREACHED = 65535;
 const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const PARAMS = new URLSearchParams(location.search);
@@ -602,6 +603,31 @@ async function loadModel() {
 }
 
 async function main() {
+  // Town selector (CONTRACT.md web/towns/index.json): >1 entries → dropdown;
+  // missing file or a single entry → none. Selecting reloads with ?town=<id>.
+  let towns = null;
+  try {
+    const tr = await fetch('towns/index.json');
+    if (tr.ok) towns = await tr.json();
+  } catch (e) { /* no manifest — default data dir */ }
+  if (Array.isArray(towns) && towns.length > 0) {
+    const want = PARAMS.get('town');
+    const entry = towns.find(t => t.id === want) || towns[0];
+    if (!PARAMS.get('data')) DATA_DIR = entry.data_dir.replace(/\/+$/, '');
+    if (towns.length > 1) {
+      const sel = $('town-select');
+      sel.hidden = false;
+      document.body.classList.add('has-towns');
+      sel.innerHTML = towns.map(t =>
+        `<option value="${t.id}"${t.id === entry.id ? ' selected' : ''}>${t.name} — ${t.event}</option>`).join('');
+      sel.onchange = () => {
+        const p = new URLSearchParams(location.search);
+        p.set('town', sel.value);
+        location.search = p.toString();
+      };
+    }
+  }
+
   const meta = await loadJSON('meta.json');
   const [baseline, curve, buildingsFC, legend, model] = await Promise.all([
     loadJSON('baseline.json'), loadJSON('curve.json'),
@@ -651,12 +677,13 @@ async function main() {
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
   fire.setHomes(hx, hy, states);
-  // 6:30 AM is the Camp Fire's ignition time — hard-coded until meta grows a field.
+  // 6:30 AM is the Camp Fire's ignition time — Paradise-only until meta grows a field.
+  const ignTime = meta.town.startsWith('Paradise') ? ' · 6:30 AM' : '';
   L.marker([meta.ignition.lat, meta.ignition.lon], {
     interactive: false, keyboard: false,
     icon: L.divIcon({
       className: 'ign', iconSize: [0, 0],
-      html: `<span class="ign-dot"></span><span class="ign-label">${meta.ignition.label.split(' (')[0]} · 6:30 AM</span>`,
+      html: `<span class="ign-dot"></span><span class="ign-label">${meta.ignition.label.split(' (')[0]}${ignTime}</span>`,
     }),
   }).addTo(map);
 
@@ -716,7 +743,7 @@ async function main() {
   function updateStats() {
     const st = model.steps[state.step];
     setNum($('stat-saved'), lastCounts.saved, fmtInt);
-    const mb = st.minutesBought == null ? '—' : `+${st.minutesBought}`;
+    const mb = st.minutesBought == null ? '—' : `+${Math.round(st.minutesBought)}`;
     $('stat-line').textContent = `SPENT ${fmtMoney(st.cost)} · ${mb} MIN EVACUATION`;
   }
 
@@ -742,7 +769,7 @@ async function main() {
 
   function updateReadout() {
     const st = model.steps[state.step];
-    const mb = st.minutesBought == null ? '—' : st.minutesBought;
+    const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
     $('budget-readout').textContent =
       `${fmtM2(state.budget)} · ${st.breakCount} break${st.breakCount === 1 ? '' : 's'} · ` +
       `${st.saved.toLocaleString()} homes saved · ${mb} min bought`;
@@ -868,7 +895,7 @@ async function main() {
     if (f === 'burn1') setCaption('Same fire. Your fuel breaks are the pale strips of cleared ground.', null);
     if (f === 'done') {
       const st = model.steps[state.step];
-      const mb = st.minutesBought == null ? '—' : st.minutesBought;
+      const mb = st.minutesBought == null ? '—' : Math.round(st.minutesBought);
       setCaption(`${fmtMoney(st.cost)} · ${lastCounts.saved.toLocaleString()} homes saved · ` +
         `${mb} minutes of evacuation time bought.`, 'Try another budget');
     }
