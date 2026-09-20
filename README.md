@@ -15,30 +15,41 @@ planning document.
 ## Results — Paradise, CA (Camp Fire re-run)
 
 Baseline: the fire reaches the first homes in **59 minutes** (the real fire took
-about 90); within 12 hours it hits **7,765 of 11,000 homes**.
+about 90); within 12 hours it hits **7,774 of 11,000 homes**. Breaks below are
+the plan optimized for this fire, re-scored on the shipped model (the numbers the
+page shows).
 
 | Budget | Spent | Breaks | Homes saved | $ / home | Evac. minutes bought |
 |---|---|---|---|---|---|
-| $500k | $430,760 | 5 | 2,515 | $171 | +153 |
-| $1M | $983,005 | 14 | 3,610 | $272 | +206 |
-| $2M | $1,990,930 | 27 | 4,663 | $427 | +282 |
-| $3M | $2,948,125 | 43 | 5,519 | $534 | +418 |
-| $5M | $4,997,350 | 70 | 6,173 | $810 | +418 |
+| $500k | $430,760 | 5 | 2,527 | $170 | +153 |
+| $1M | $983,005 | 14 | 3,625 | $271 | +206 |
+| $2M | $1,990,930 | 27 | 4,397 | $453 | +235 |
+| $3M | $2,948,125 | 43 | 5,497 | $536 | +369 |
+| $5M | $4,997,350 | 70 | 5,999 | $833 | +373 |
 
-The first half-million dollars saves a home for every $171 spent.
+The first half-million dollars saves a home for every $170 spent.
 
 ## Results — Altadena, CA (Eaton Fire re-run)
 
 Same pipeline, second town, one config file (`towns/altadena.json`, LANDFIRE
 LF2024 fuels — the newest pre-fire vintage). Baseline: fire at the first homes
-in **44 minutes**; 13,137 of 15,000 homes hit within 12 hours.
+in **44 minutes**; 13,143 of 15,000 homes hit within 12 hours.
+
+The original single-fire solve (2,982 / 8,219 / 11,822 / 12,911 saved at $500k /
+$1M / $2M / $3M) does **not** reproduce on the shipped model: LANDFIRE returned a
+different grid on re-fetch, so the Altadena terrain was restored from the
+committed exports, and on that terrain the same breaks save far fewer homes.
+The page shows the re-scored numbers:
 
 | Budget | Spent | Breaks | Homes saved | $ / home | Evac. minutes bought |
 |---|---|---|---|---|---|
-| $500k | $487,720 | 9 | 2,982 | $164 | +117 |
-| $1M | $960,310 | 17 | 8,219 | **$117** | +332 |
-| $2M | $1,956,220 | 32 | 11,822 | $165 | +437 |
-| $3M | $2,984,615 | 49 | 12,911 | $231 | +549 |
+| $500k | $487,720 | 9 | 307 | $1,589 | +17 |
+| $1M | $960,310 | 17 | 969 | $991 | +17 |
+| $2M | $1,956,220 | 32 | 2,616 | $748 | +108 |
+| $3M | $2,984,615 | 49 | 3,208 | $930 | +113 |
+
+The robust plan (below) saves 9,278 homes on the same historical fire at $3M —
+Altadena's historical plan should be re-solved before its numbers are quoted.
 
 ## How the simulation works
 
@@ -138,11 +149,14 @@ fire — but the historical plan averaged over the same 25 fires is lower still
 (Paradise: 218 / 326 / 467 / 687 mean saved at $500k / $1M / $2M / $3M, vs the
 robust plan's 327 / 540 / 839 / 1,193). The page shows both numbers.
 
-| Town | Budget | Robust plan, mean saved | Historical plan, saved on its fire |
-|---|---|---|---|
-| Paradise | $500k / $1M / $2M / $3M / $5M | 327 / 540 / 839 / 1,193 / 1,659 | 2,515 / 3,610 / 4,663 / 5,519 / 6,173 |
-| Altadena | $500k / $1M / $2M / $3M | 2,214 / 3,247 / 5,455 / 6,768 | 2,982 / 8,219 / 11,822 / 12,911 |
-| Santa Rosa (Tubbs, 2017) | $500k / $1M / $2M / $3M | 4,703 / 6,918 / 9,713 / 11,450 | 9,105 / 11,350 / 16,050 / 18,443 |
+All numbers are scored on the shipped model (`robust.json`), so they match the
+page.
+
+| Town | Budget | Robust plan, mean saved | Robust plan, on the historical fire | Historical plan, on the historical fire |
+|---|---|---|---|---|
+| Paradise | $500k / $1M / $2M / $3M / $5M | 327 / 540 / 839 / 1,193 / 1,659 | 1,993 / 2,209 / 3,550 / 4,692 / 5,762 | 2,527 / 3,625 / 4,397 / 5,497 / 5,999 |
+| Altadena | $500k / $1M / $2M / $3M | 2,214 / 3,247 / 5,455 / 6,768 | 1,184 / 1,806 / 4,418 / 9,278 | 307 / 969 / 2,616 / 3,208 |
+| Santa Rosa (Tubbs, 2017) | $500k / $1M / $2M / $3M | 4,702 / 6,918 / 9,713 / 11,504 | 9,105 / 11,350 / 16,050 / 18,445 | 16,300 / 20,336 / 21,734 / 21,797 |
 
 Santa Rosa (`towns/santarosa.json`, LF2016 fuels): baseline 21,942 of 30,000
 homes hit, first home at 49 minutes; calibration ring cut homes hit by 57%.
