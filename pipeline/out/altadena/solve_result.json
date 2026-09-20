@@ -1,0 +1,775 @@
+{
+  "town": "altadena",
+  "max_budget": 5000000,
+  "baseline_homes_hit": 11841,
+  "accepted": [
+    {
+      "id": 1521,
+      "kind": "strip",
+      "cells": 18,
+      "cost": 25810.0,
+      "marginal_saved": 186,
+      "cum_cost": 25810.0,
+      "cum_saved": 186
+    },
+    {
+      "id": 1629,
+      "kind": "strip",
+      "cells": 35,
+      "cost": 45835.0,
+      "marginal_saved": 289,
+      "cum_cost": 71645.0,
+      "cum_saved": 475
+    },
+    {
+      "id": 1537,
+      "kind": "strip",
+      "cells": 44,
+      "cost": 58740.0,
+      "marginal_saved": 278,
+      "cum_cost": 130385.0,
+      "cum_saved": 753
+    },
+    {
+      "id": 1539,
+      "kind": "strip",
+      "cells": 46,
+      "cost": 61410.0,
+      "marginal_saved": 451,
+      "cum_cost": 191795.0,
+      "cum_saved": 1204
+    },
+    {
+      "id": 1644,
+      "kind": "strip",
+      "cells": 22,
+      "cost": 29370.0,
+      "marginal_saved": 212,
+      "cum_cost": 221165.0,
+      "cum_saved": 1416
+    },
+    {
+      "id": 1631,
+      "kind": "strip",
+      "cells": 64,
+      "cost": 86330.0,
+      "marginal_saved": 470,
+      "cum_cost": 307495.0,
+      "cum_saved": 1886
+    },
+    {
+      "id": 1775,
+      "kind": "strip",
+      "cells": 33,
+      "cost": 17355.0,
+      "marginal_saved": 64,
+      "cum_cost": 324850.0,
+      "cum_saved": 1950
+    },
+    {
+      "id": 1841,
+      "kind": "strip",
+      "cells": 23,
+      "cost": 20915.0,
+      "marginal_saved": 65,
+      "cum_cost": 345765.0,
+      "cum_saved": 2015
+    },
+    {
+      "id": 1189,
+      "kind": "strip",
+      "cells": 29,
+      "cost": 42275.0,
+      "marginal_saved": 192,
+      "cum_cost": 388040.0,
+      "cum_saved": 2207
+    },
+    {
+      "id": 1531,
+      "kind": "strip",
+      "cells": 31,
+      "cost": 44055.0,
+      "marginal_saved": 167,
+      "cum_cost": 432095.0,
+      "cum_saved": 2374
+    },
+    {
+      "id": 1626,
+      "kind": "strip",
+      "cells": 24,
+      "cost": 32040.0,
+      "marginal_saved": 100,
+      "cum_cost": 464135.0,
+      "cum_saved": 2474
+    },
+    {
+      "id": 1788,
+      "kind": "strip",
+      "cells": 50,
+      "cost": 64970.0,
+      "marginal_saved": 182,
+      "cum_cost": 529105.0,
+      "cum_saved": 2656
+    },
+    {
+      "id": 1645,
+      "kind": "strip",
+      "cells": 38,
+      "cost": 54290.0,
+      "marginal_saved": 382,
+      "cum_cost": 583395.0,
+      "cum_saved": 3038
+    },
+    {
+      "id": 1438,
+      "kind": "strip",
+      "cells": 44,
+      "cost": 58740.0,
+      "marginal_saved": 194,
+      "cum_cost": 642135.0,
+      "cum_saved": 3232
+    },
+    {
+      "id": 1523,
+      "kind": "strip",
+      "cells": 35,
+      "cost": 50285.0,
+      "marginal_saved": 177,
+      "cum_cost": 692420.0,
+      "cum_saved": 3409
+    },
+    {
+      "id": 1533,
+      "kind": "strip",
+      "cells": 60,
+      "cost": 79210.0,
+      "marginal_saved": 3843,
+      "cum_cost": 771630.0,
+      "cum_saved": 7252
+    },
+    {
+      "id": 1720,
+      "kind": "strip",
+      "cells": 42,
+      "cost": 56960.0,
+      "marginal_saved": 108,
+      "cum_cost": 828590.0,
+      "cum_saved": 7360
+    },
+    {
+      "id": 1543,
+      "kind": "strip",
+      "cells": 64,
+      "cost": 84550.0,
+      "marginal_saved": 522,
+      "cum_cost": 913140.0,
+      "cum_saved": 7882
+    },
+    {
+      "id": 1218,
+      "kind": "strip",
+      "cells": 62,
+      "cost": 83660.0,
+      "marginal_saved": 118,
+      "cum_cost": 996800.0,
+      "cum_saved": 8000
+    },
+    {
+      "id": 1625,
+      "kind": "strip",
+      "cells": 63,
+      "cost": 88555.0,
+      "marginal_saved": 800,
+      "cum_cost": 1085355.0,
+      "cum_saved": 8800
+    },
+    {
+      "id": 1710,
+      "kind": "strip",
+      "cells": 41,
+      "cost": 63635.0,
+      "marginal_saved": 52,
+      "cum_cost": 1148990.0,
+      "cum_saved": 8852
+    },
+    {
+      "id": 1643,
+      "kind": "strip",
+      "cells": 46,
+      "cost": 60520.0,
+      "marginal_saved": 49,
+      "cum_cost": 1209510.0,
+      "cum_saved": 8901
+    },
+    {
+      "id": 1434,
+      "kind": "strip",
+      "cells": 64,
+      "cost": 85440.0,
+      "marginal_saved": 106,
+      "cum_cost": 1294950.0,
+      "cum_saved": 9007
+    },
+    {
+      "id": 1622,
+      "kind": "strip",
+      "cells": 34,
+      "cost": 45390.0,
+      "marginal_saved": 64,
+      "cum_cost": 1340340.0,
+      "cum_saved": 9071
+    },
+    {
+      "id": 1202,
+      "kind": "strip",
+      "cells": 48,
+      "cost": 67640.0,
+      "marginal_saved": 39,
+      "cum_cost": 1407980.0,
+      "cum_saved": 9110
+    },
+    {
+      "id": 1446,
+      "kind": "strip",
+      "cells": 38,
+      "cost": 48950.0,
+      "marginal_saved": 919,
+      "cum_cost": 1456930.0,
+      "cum_saved": 10029
+    },
+    {
+      "id": 1784,
+      "kind": "strip",
+      "cells": 35,
+      "cost": 50285.0,
+      "marginal_saved": 34,
+      "cum_cost": 1507215.0,
+      "cum_saved": 10063
+    },
+    {
+      "id": 1204,
+      "kind": "strip",
+      "cells": 39,
+      "cost": 56515.0,
+      "marginal_saved": 46,
+      "cum_cost": 1563730.0,
+      "cum_saved": 10109
+    },
+    {
+      "id": 1636,
+      "kind": "strip",
+      "cells": 22,
+      "cost": 29370.0,
+      "marginal_saved": 39,
+      "cum_cost": 1593100.0,
+      "cum_saved": 10148
+    },
+    {
+      "id": 1619,
+      "kind": "strip",
+      "cells": 15,
+      "cost": 27145.0,
+      "marginal_saved": 24,
+      "cum_cost": 1620245.0,
+      "cum_saved": 10172
+    },
+    {
+      "id": 1426,
+      "kind": "strip",
+      "cells": 50,
+      "cost": 68530.0,
+      "marginal_saved": 35,
+      "cum_cost": 1688775.0,
+      "cum_saved": 10207
+    },
+    {
+      "id": 1430,
+      "kind": "strip",
+      "cells": 39,
+      "cost": 52955.0,
+      "marginal_saved": 22,
+      "cum_cost": 1741730.0,
+      "cum_saved": 10229
+    },
+    {
+      "id": 1323,
+      "kind": "strip",
+      "cells": 62,
+      "cost": 83660.0,
+      "marginal_saved": 61,
+      "cum_cost": 1825390.0,
+      "cum_saved": 10290
+    },
+    {
+      "id": 1071,
+      "kind": "strip",
+      "cells": 64,
+      "cost": 87220.0,
+      "marginal_saved": 27,
+      "cum_cost": 1912610.0,
+      "cum_saved": 10317
+    },
+    {
+      "id": 1621,
+      "kind": "strip",
+      "cells": 36,
+      "cost": 55180.0,
+      "marginal_saved": 32,
+      "cum_cost": 1967790.0,
+      "cum_saved": 10349
+    },
+    {
+      "id": 1335,
+      "kind": "strip",
+      "cells": 46,
+      "cost": 61410.0,
+      "marginal_saved": 109,
+      "cum_cost": 2029200.0,
+      "cum_saved": 10458
+    },
+    {
+      "id": 1327,
+      "kind": "strip",
+      "cells": 38,
+      "cost": 54290.0,
+      "marginal_saved": 35,
+      "cum_cost": 2083490.0,
+      "cum_saved": 10493
+    },
+    {
+      "id": 1529,
+      "kind": "strip",
+      "cells": 43,
+      "cost": 57405.0,
+      "marginal_saved": 21,
+      "cum_cost": 2140895.0,
+      "cum_saved": 10514
+    },
+    {
+      "id": 1616,
+      "kind": "strip",
+      "cells": 24,
+      "cost": 38270.0,
+      "marginal_saved": 42,
+      "cum_cost": 2179165.0,
+      "cum_saved": 10556
+    },
+    {
+      "id": 1196,
+      "kind": "strip",
+      "cells": 41,
+      "cost": 58295.0,
+      "marginal_saved": 41,
+      "cum_cost": 2237460.0,
+      "cum_saved": 10597
+    },
+    {
+      "id": 1424,
+      "kind": "strip",
+      "cells": 63,
+      "cost": 84105.0,
+      "marginal_saved": 54,
+      "cum_cost": 2321565.0,
+      "cum_saved": 10651
+    },
+    {
+      "id": 1545,
+      "kind": "strip",
+      "cells": 46,
+      "cost": 60520.0,
+      "marginal_saved": 794,
+      "cum_cost": 2382085.0,
+      "cum_saved": 11445
+    },
+    {
+      "id": 1212,
+      "kind": "strip",
+      "cells": 48,
+      "cost": 65860.0,
+      "marginal_saved": 27,
+      "cum_cost": 2447945.0,
+      "cum_saved": 11472
+    },
+    {
+      "id": 1321,
+      "kind": "strip",
+      "cells": 64,
+      "cost": 87220.0,
+      "marginal_saved": 65,
+      "cum_cost": 2535165.0,
+      "cum_saved": 11537
+    },
+    {
+      "id": 1535,
+      "kind": "strip",
+      "cells": 63,
+      "cost": 84995.0,
+      "marginal_saved": 30,
+      "cum_cost": 2620160.0,
+      "cum_saved": 11567
+    },
+    {
+      "id": 1949,
+      "kind": "arc",
+      "cells": 40,
+      "cost": 53400.0,
+      "marginal_saved": 7,
+      "cum_cost": 2673560.0,
+      "cum_saved": 11574
+    },
+    {
+      "id": 1947,
+      "kind": "arc",
+      "cells": 40,
+      "cost": 53400.0,
+      "marginal_saved": 25,
+      "cum_cost": 2726960.0,
+      "cum_saved": 11599
+    },
+    {
+      "id": 2016,
+      "kind": "arc",
+      "cells": 40,
+      "cost": 53400.0,
+      "marginal_saved": 48,
+      "cum_cost": 2780360.0,
+      "cum_saved": 11647
+    },
+    {
+      "id": 1948,
+      "kind": "arc",
+      "cells": 40,
+      "cost": 54290.0,
+      "marginal_saved": 188,
+      "cum_cost": 2834650.0,
+      "cum_saved": 11835
+    },
+    {
+      "id": 1946,
+      "kind": "arc",
+      "cells": 40,
+      "cost": 53400.0,
+      "marginal_saved": 2,
+      "cum_cost": 2888050.0,
+      "cum_saved": 11837
+    },
+    {
+      "id": 1452,
+      "kind": "strip",
+      "cells": 46,
+      "cost": 59630.0,
+      "marginal_saved": 1,
+      "cum_cost": 2947680.0,
+      "cum_saved": 11838
+    }
+  ],
+  "curve": [
+    {
+      "step": 1,
+      "break_id": 1521,
+      "cumulative_cost": 25810.0,
+      "cumulative_saved": 186
+    },
+    {
+      "step": 2,
+      "break_id": 1629,
+      "cumulative_cost": 71645.0,
+      "cumulative_saved": 475
+    },
+    {
+      "step": 3,
+      "break_id": 1537,
+      "cumulative_cost": 130385.0,
+      "cumulative_saved": 753
+    },
+    {
+      "step": 4,
+      "break_id": 1539,
+      "cumulative_cost": 191795.0,
+      "cumulative_saved": 1204
+    },
+    {
+      "step": 5,
+      "break_id": 1644,
+      "cumulative_cost": 221165.0,
+      "cumulative_saved": 1416
+    },
+    {
+      "step": 6,
+      "break_id": 1631,
+      "cumulative_cost": 307495.0,
+      "cumulative_saved": 1886
+    },
+    {
+      "step": 7,
+      "break_id": 1775,
+      "cumulative_cost": 324850.0,
+      "cumulative_saved": 1950
+    },
+    {
+      "step": 8,
+      "break_id": 1841,
+      "cumulative_cost": 345765.0,
+      "cumulative_saved": 2015
+    },
+    {
+      "step": 9,
+      "break_id": 1189,
+      "cumulative_cost": 388040.0,
+      "cumulative_saved": 2207
+    },
+    {
+      "step": 10,
+      "break_id": 1531,
+      "cumulative_cost": 432095.0,
+      "cumulative_saved": 2374
+    },
+    {
+      "step": 11,
+      "break_id": 1626,
+      "cumulative_cost": 464135.0,
+      "cumulative_saved": 2474
+    },
+    {
+      "step": 12,
+      "break_id": 1788,
+      "cumulative_cost": 529105.0,
+      "cumulative_saved": 2656
+    },
+    {
+      "step": 13,
+      "break_id": 1645,
+      "cumulative_cost": 583395.0,
+      "cumulative_saved": 3038
+    },
+    {
+      "step": 14,
+      "break_id": 1438,
+      "cumulative_cost": 642135.0,
+      "cumulative_saved": 3232
+    },
+    {
+      "step": 15,
+      "break_id": 1523,
+      "cumulative_cost": 692420.0,
+      "cumulative_saved": 3409
+    },
+    {
+      "step": 16,
+      "break_id": 1533,
+      "cumulative_cost": 771630.0,
+      "cumulative_saved": 7252
+    },
+    {
+      "step": 17,
+      "break_id": 1720,
+      "cumulative_cost": 828590.0,
+      "cumulative_saved": 7360
+    },
+    {
+      "step": 18,
+      "break_id": 1543,
+      "cumulative_cost": 913140.0,
+      "cumulative_saved": 7882
+    },
+    {
+      "step": 19,
+      "break_id": 1218,
+      "cumulative_cost": 996800.0,
+      "cumulative_saved": 8000
+    },
+    {
+      "step": 20,
+      "break_id": 1625,
+      "cumulative_cost": 1085355.0,
+      "cumulative_saved": 8800
+    },
+    {
+      "step": 21,
+      "break_id": 1710,
+      "cumulative_cost": 1148990.0,
+      "cumulative_saved": 8852
+    },
+    {
+      "step": 22,
+      "break_id": 1643,
+      "cumulative_cost": 1209510.0,
+      "cumulative_saved": 8901
+    },
+    {
+      "step": 23,
+      "break_id": 1434,
+      "cumulative_cost": 1294950.0,
+      "cumulative_saved": 9007
+    },
+    {
+      "step": 24,
+      "break_id": 1622,
+      "cumulative_cost": 1340340.0,
+      "cumulative_saved": 9071
+    },
+    {
+      "step": 25,
+      "break_id": 1202,
+      "cumulative_cost": 1407980.0,
+      "cumulative_saved": 9110
+    },
+    {
+      "step": 26,
+      "break_id": 1446,
+      "cumulative_cost": 1456930.0,
+      "cumulative_saved": 10029
+    },
+    {
+      "step": 27,
+      "break_id": 1784,
+      "cumulative_cost": 1507215.0,
+      "cumulative_saved": 10063
+    },
+    {
+      "step": 28,
+      "break_id": 1204,
+      "cumulative_cost": 1563730.0,
+      "cumulative_saved": 10109
+    },
+    {
+      "step": 29,
+      "break_id": 1636,
+      "cumulative_cost": 1593100.0,
+      "cumulative_saved": 10148
+    },
+    {
+      "step": 30,
+      "break_id": 1619,
+      "cumulative_cost": 1620245.0,
+      "cumulative_saved": 10172
+    },
+    {
+      "step": 31,
+      "break_id": 1426,
+      "cumulative_cost": 1688775.0,
+      "cumulative_saved": 10207
+    },
+    {
+      "step": 32,
+      "break_id": 1430,
+      "cumulative_cost": 1741730.0,
+      "cumulative_saved": 10229
+    },
+    {
+      "step": 33,
+      "break_id": 1323,
+      "cumulative_cost": 1825390.0,
+      "cumulative_saved": 10290
+    },
+    {
+      "step": 34,
+      "break_id": 1071,
+      "cumulative_cost": 1912610.0,
+      "cumulative_saved": 10317
+    },
+    {
+      "step": 35,
+      "break_id": 1621,
+      "cumulative_cost": 1967790.0,
+      "cumulative_saved": 10349
+    },
+    {
+      "step": 36,
+      "break_id": 1335,
+      "cumulative_cost": 2029200.0,
+      "cumulative_saved": 10458
+    },
+    {
+      "step": 37,
+      "break_id": 1327,
+      "cumulative_cost": 2083490.0,
+      "cumulative_saved": 10493
+    },
+    {
+      "step": 38,
+      "break_id": 1529,
+      "cumulative_cost": 2140895.0,
+      "cumulative_saved": 10514
+    },
+    {
+      "step": 39,
+      "break_id": 1616,
+      "cumulative_cost": 2179165.0,
+      "cumulative_saved": 10556
+    },
+    {
+      "step": 40,
+      "break_id": 1196,
+      "cumulative_cost": 2237460.0,
+      "cumulative_saved": 10597
+    },
+    {
+      "step": 41,
+      "break_id": 1424,
+      "cumulative_cost": 2321565.0,
+      "cumulative_saved": 10651
+    },
+    {
+      "step": 42,
+      "break_id": 1545,
+      "cumulative_cost": 2382085.0,
+      "cumulative_saved": 11445
+    },
+    {
+      "step": 43,
+      "break_id": 1212,
+      "cumulative_cost": 2447945.0,
+      "cumulative_saved": 11472
+    },
+    {
+      "step": 44,
+      "break_id": 1321,
+      "cumulative_cost": 2535165.0,
+      "cumulative_saved": 11537
+    },
+    {
+      "step": 45,
+      "break_id": 1535,
+      "cumulative_cost": 2620160.0,
+      "cumulative_saved": 11567
+    },
+    {
+      "step": 46,
+      "break_id": 1949,
+      "cumulative_cost": 2673560.0,
+      "cumulative_saved": 11574
+    },
+    {
+      "step": 47,
+      "break_id": 1947,
+      "cumulative_cost": 2726960.0,
+      "cumulative_saved": 11599
+    },
+    {
+      "step": 48,
+      "break_id": 2016,
+      "cumulative_cost": 2780360.0,
+      "cumulative_saved": 11647
+    },
+    {
+      "step": 49,
+      "break_id": 1948,
+      "cumulative_cost": 2834650.0,
+      "cumulative_saved": 11835
+    },
+    {
+      "step": 50,
+      "break_id": 1946,
+      "cumulative_cost": 2888050.0,
+      "cumulative_saved": 11837
+    },
+    {
+      "step": 51,
+      "break_id": 1452,
+      "cumulative_cost": 2947680.0,
+      "cumulative_saved": 11838
+    }
+  ],
+  "generated": "2026-09-19T23:17:48"
+}
