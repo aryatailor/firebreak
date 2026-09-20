@@ -220,6 +220,20 @@ solver shape (§7), schema freeze (§8). Everything else is mechanics.**
 
 ## Decisions
 
+- **Candidate pruning tightened** (first live run produced 19.7k candidates — the
+  whole box burns by the horizon, so the §6 corridor rule barely pruned): added a
+  defense-zone filter (within ~3 km of the urban edge), lattice 480→720 m, lengths
+  {1.0, 2.0} km → 4,774 candidates, CELF init ≈ 15–30 min.
+- **steps.json + breaks.geojson added to CONTRACT.md** (Zach, mid-build): one
+  entry per greedy step (uint8 5-minute-bucket arrival grids) for a continuous
+  budget slider; web/data size cap raised 5→20 MB (served from localhost — the
+  5 MB cap was for cloning). solutions.json/baseline.json unchanged for the five
+  snap budgets; the page must degrade to snap budgets on mock (which predates
+  steps.json).
+- **Evacuation-time stats** (Zach): baseline + every solution carry
+  minutes_to_town / minutes_to_first_home, solutions add minutes_bought_* deltas;
+  steps.json carries minutes_bought (town-center delta). The calibration ring is
+  packaged as pipeline/out/<town>/ring_fallback.json in case solver output is ugly.
 - Homes are the urban-cell proxy scaled to `homes_estimate` (11,000 for Paradise —
   the pre-fire count), `buildings_proxy: true`, plus a meta.simplifications line
   ("Homes are estimated from developed-land cells at 2018 density, not individual
@@ -329,4 +343,36 @@ Where web/ goes beyond or interprets DESIGN.md; nothing here touches CONTRACT.md
   (2) cells ignited within the **last 30 min** of current t get a soft glow — a
   second smooth-scaled canvas, blurred and screen-blended, above the crisp cell
   layer; (3) no 3D, no audio. DESIGN.md's text not edited from this session (web/-only
-  commit rule) — it should be synced to match.
+  commit rule) — it should be synced to match. *(Superseded by the design+UX pass
+  below: the 35% blend was dropped, audio was added; DESIGN.md is now rewritten and
+  current.)*
+- **Design+UX pass (Zach, 2026-09-19), sections 3–5 + follow-ups — shipped.**
+  DESIGN.md is rewritten to match exactly what ships; read it cold. Notes beyond it:
+  - **steps.json/breaks.geojson**: built first against an assumed shape, then
+    **reconciled to the CONTRACT.md section that landed mid-build** (top-level
+    array, step 0 = baseline, `break_ids[]`, `arrival_b64` uint8 5-min buckets,
+    `minutes_bought`). `web/mock/steps.json` + `web/mock/breaks.geojson` are
+    regenerated to that landed shape (17 entries incl. baseline; step grids are
+    per-cell lerps between the budget-tier grids; `minutes_*` values are a fake
+    ramp 4→55). The contract's degrade path is implemented and tested: 404 on
+    either file ⇒ snap-budget model synthesized from solutions.json (break
+    features get `step = budget index + 1`; missing `minutes_bought_town` shows
+    as "—").
+  - **Hover "homes protected"** per break = marginal `cumulative_saved` delta from
+    curve.json keyed by `break_id` (robust to multi-break steps).
+  - **Ghost perimeter** skips boundary runs on the domain border (where the mock
+    fire runs off-grid there is no real perimeter to draw).
+  - **Houses**: drawn in a bounds-anchored canvas positioned through the exact same
+    code path as the fire canvas — verified 0.00 px divergence across 6 zoom
+    levels (the old screen-space layer's stale-transform drift is structurally
+    impossible now). Backing store capped at 4096 px; past the cap, sprites draw
+    smaller so on-screen size stays ~6–10 px.
+  - **Break edge treatment**: "1 px lighter edge at 0.35 alpha" is approximated at
+    cell resolution — perimeter cells of a strip render in the lighter tone at
+    0.35; after the 2× + blur pipeline it reads as the intended soft rim.
+  - **Audio**: brown-noise bed + bandpassed impulse crackle; level = fresh-front
+    cell count normalized by the running max. Muted by default until the intro
+    click or the footer toggle (autoplay policy).
+  - **JS is ~940 lines** against the brief's ~800: the delta is the audio engine,
+    the guided-flow machine, and the snap-budget fallback the landed contract
+    added. All in one readable file; say the word and I'll split or trim.
