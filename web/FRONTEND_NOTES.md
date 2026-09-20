@@ -127,6 +127,38 @@ without the drawn breaks for a fair baseline, one with them.
   was written, so the happy path is built to the contract but exercised only
   against the degraded path.
 
+## Tier 5: look
+
+Audited against Prime Intellect (dark, technical, hairline rules, mono numerals,
+numbered sections) and ollivere (the opening carries the weight, nothing else on
+screen competes with it).
+
+- Swept the stylesheet: **no gradients, no shadows, no corner over 3 px**. The only
+  `box-shadow` left is the one that removes Leaflet's default.
+- Two things I had introduced were removed: a gradient scrim behind the timeline
+  strip (now a flat plate with a hairline top) and a glow ring on the region pins.
+- Map shapes carry no outlines. Breaks are cleared ground, the ghost perimeter is a
+  dashed line because the story needs it, homes are pixels in the grid canvas with
+  the 1 px dark edge and green saved ring the brief asks for.
+- Text shadows remain on the crawl line, the ignition label and the region labels.
+  Those sit over satellite imagery and are for legibility, not decoration.
+- Flat dark plates remain behind the caption, the legend and the break tooltip, for
+  the same reason. They have no border and a 2 px corner, so they read as caption
+  plates rather than cards.
+- Saturation: fire is the only saturated thing while a fire is on screen. The green
+  saved ring and the amber region pins are the exceptions, and the pins only appear
+  in the wide view, where the fire layers are faded out.
+
+### Audio
+
+- Crackle unchanged: brown noise bed plus bandpassed impulses, level tracked to the
+  size of the active front.
+- Added a **low wind bed under the crawl only**: the same noise through a 190 Hz
+  lowpass with a 0.07 Hz breathing LFO, at 0.05 gain, ramped over 1.4 s. It stops
+  when the fire starts.
+- Nothing autoplays. The audio context is created by the Enter click and by nothing
+  else, and the mute toggle sits in the panel footer.
+
 ### Home drift, measured
 
 Homes are pixels inside the fire's grid canvas, so their position is quantised to

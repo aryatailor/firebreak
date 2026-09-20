@@ -179,7 +179,7 @@ input[type=range]::-moz-range-thumb {
 #timeline {
   position: absolute; left: 0; right: 340px; bottom: 0; z-index: 1100;
   display: flex; align-items: center; gap: 10px; padding: 7px 14px 8px;
-  background: linear-gradient(to top, rgba(10, 11, 13, .82), rgba(10, 11, 13, 0));
+  background: rgba(10, 11, 13, .78); border-top: 1px solid var(--line);
 }
 #timeline[hidden] { display: none; }
 #timeline #time { flex: 1; margin: 0; }
@@ -404,7 +404,6 @@ body.intro #brand { display: none; }
 .region-dot {
   position: absolute; left: -4px; top: -4px; width: 8px; height: 8px;
   border-radius: 50%; background: var(--fire);
-  box-shadow: 0 0 0 3px rgba(255, 122, 26, .22);
 }
 .region-label {
   position: absolute; left: 11px; top: -9px; white-space: nowrap;

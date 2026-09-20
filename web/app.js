@@ -427,6 +427,7 @@ function rasterizeBreaks(breaksFC, meta) {
    impulses. Level tracks the active front size. Must never throw. */
 function makeAudio() {
   let ctx = null, master = null, muted = false, level = 0;
+  let windGain = null;            // quiet low bed under the opening crawl
   function start() {
     if (ctx) return;
     try {
@@ -449,6 +450,16 @@ function makeAudio() {
       const bed = ctx.createGain(); bed.gain.value = 0.7;
       src.connect(lp); lp.connect(bed); bed.connect(master);
       src.start();
+
+      // wind bed: the same noise, far lower and slowly breathing, straight to output
+      const wsrc = ctx.createBufferSource(); wsrc.buffer = buf; wsrc.loop = true;
+      const wlp = ctx.createBiquadFilter(); wlp.type = 'lowpass'; wlp.frequency.value = 190;
+      windGain = ctx.createGain(); windGain.gain.value = 0;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07;
+      const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.018;
+      lfo.connect(lfoGain); lfoGain.connect(windGain.gain);
+      wsrc.connect(wlp); wlp.connect(windGain); windGain.connect(ctx.destination);
+      wsrc.start(); lfo.start();
       setInterval(() => {
         try {
           if (!ctx || muted || level < 0.02) return;
@@ -481,13 +492,25 @@ function makeAudio() {
       master.gain.linearRampToValueAtTime(Math.min(0.5, x * 0.5), ctx.currentTime + 0.15);
     } catch (e) { /* ignore */ }
   }
+  function setWind(on) {
+    if (!ctx || !windGain) return;
+    try {
+      const target = on && !muted ? 0.05 : 0;
+      windGain.gain.cancelScheduledValues(ctx.currentTime);
+      windGain.gain.setValueAtTime(windGain.gain.value, ctx.currentTime);
+      windGain.gain.linearRampToValueAtTime(target, ctx.currentTime + 1.4);
+    } catch (e) { /* audio must never break the page */ }
+  }
   function toggleMute() {
     muted = !muted;
     if (!ctx) return muted;
-    try { master.gain.value = muted ? 0 : Math.min(0.5, level * 0.5); } catch (e) { /* ignore */ }
+    try {
+      master.gain.value = muted ? 0 : Math.min(0.5, level * 0.5);
+      if (windGain) windGain.gain.value = muted ? 0 : windGain.gain.value;
+    } catch (e) { /* ignore */ }
     return muted;
   }
-  return { start, setLevel, toggleMute, isMuted: () => muted, isActive: () => !!ctx };
+  return { start, setLevel, setWind, toggleMute, isMuted: () => muted, isActive: () => !!ctx };
 }
 
 /* Inline SVG: step curve of cumulative cost vs cumulative homes saved (curve.json),
@@ -1290,6 +1313,7 @@ async function main() {
     skipEl.hidden = f === 'free';
     skipEl.textContent = f === 'crawl' ? 'Skip intro' : 'Free play';
     $('timeline').hidden = f === 'crawl';
+    audio.setWind(f === 'crawl');      // low wind bed under the opening only
     if (f === 'burn0') {
       setCaption('This is what happened.', null);
       crawlTimers.push(setTimeout(() => {
