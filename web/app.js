@@ -97,6 +97,15 @@ const FireLayer = L.Layer.extend({
     this._img = this._ctx.createImageData(this._cols * 2, this._rows * 2);
     this._gimg = this._octx.createImageData(this._cols, this._rows);
     this._frame = 0;
+    // Edge feather: fire alpha → 0 over the outer 25 cells, hard zero in the
+    // outermost 5, so the fire never ends in the grid's straight boundary.
+    const ef = this._ef = new Float32Array(this._rows * this._cols);
+    for (let r = 0; r < this._rows; r++) {
+      for (let c2 = 0; c2 < this._cols; c2++) {
+        const dE = Math.min(r, c2, this._rows - 1 - r, this._cols - 1 - c2);
+        ef[r * this._cols + c2] = dE < 5 ? 0 : dE >= 25 ? 1 : (dE - 5) / 20;
+      }
+    }
     this.getPane().appendChild(c);
     this.getPane().appendChild(g);
     this._reset();
@@ -124,11 +133,14 @@ const FireLayer = L.Layer.extend({
   },
   setBreaks(mask, cellBreak) { this._mask = mask; this._cellBreak = cellBreak; },
   setHover(bi) { this._hover = bi; },
+  // Homes live INSIDE this canvas (2×2 blocks at hx/hy in 2× grid px, sub-cell
+  // jitter preserved) so they can never move independently of the grid.
+  setHomes(hx, hy, states) { this._hx = hx; this._hy = hy; this._hst = states; },
   draw(arrival, t) {
     const frame = this._frame = (this._frame + 1) & 1023;
     const cols = this._cols, W2 = cols * 2, row4 = W2 * 4;
     const d = this._img.data, gd = this._gimg.data;
-    const mask = this._mask, cb = this._cellBreak, hover = this._hover;
+    const mask = this._mask, cb = this._cellBreak, hover = this._hover, ef = this._ef;
     let fresh = 0;
     for (let i = 0; i < arrival.length; i++) {
       const a = arrival[i], go = i * 4;
@@ -146,9 +158,10 @@ const FireLayer = L.Layer.extend({
         } else if (age >= RAMP_SPAN) A = 179;                    // charcoal at 0.70
         else if (age >= 120) A = 217 - ((age - 120) * 38) / 60;  // 0.85 → 0.70
         else A = 217;                                            // body at 0.85
+        A *= ef[i];                               // fade out at the grid boundary
         if (age <= GLOW_SPAN) {                   // fresh ignition: amber-white glow
           gd[go] = 255; gd[go + 1] = 226; gd[go + 2] = 150;
-          gd[go + 3] = 220 - Math.round((220 * age) / GLOW_SPAN);
+          gd[go + 3] = Math.round((220 - (220 * age) / GLOW_SPAN) * ef[i]);
         } else gd[go + 3] = 0;
       } else {
         gd[go + 3] = 0;
@@ -163,6 +176,29 @@ const FireLayer = L.Layer.extend({
       d[o + row4] = R; d[o + row4 + 1] = G; d[o + row4 + 2] = B; d[o + row4 + 3] = A;
       d[o + row4 + 4] = R; d[o + row4 + 5] = G; d[o + row4 + 6] = B; d[o + row4 + 7] = A;
     }
+    if (this._hx) {
+      const hx = this._hx, hy = this._hy, hst = this._hst;
+      for (let i = 0; i < hx.length; i++) {
+        const x = hx[i], y = hy[i], o = (y * W2 + x) * 4;
+        const burned = hst[i] === 1;
+        const R = burned ? 255 : 216, G = burned ? 59 : 216, B = burned ? 59 : 211;
+        const A = burned ? 255 : 204;
+        for (const p of [o, o + 4, o + row4, o + row4 + 4]) {
+          d[p] = R; d[p + 1] = G; d[p + 2] = B; d[p + 3] = A;
+        }
+        if (hst[i] === 2) {          // saved: 1 px green ring around the block
+          const top = o - row4 - 4, bot = o + 2 * row4 - 4;
+          for (let k = 0; k < 4; k++) {
+            for (const p of [top + k * 4, bot + k * 4]) {
+              d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = 255;
+            }
+          }
+          for (const p of [o - 4, o + 8, o + row4 - 4, o + row4 + 8]) {
+            d[p] = 61; d[p + 1] = 220; d[p + 2] = 132; d[p + 3] = 255;
+          }
+        }
+      }
+    }
     this._ctx.putImageData(this._img, 0, 0);
     this._octx.putImageData(this._gimg, 0, 0);
     const g = this._gctx;
@@ -171,94 +207,6 @@ const FireLayer = L.Layer.extend({
     g.drawImage(this._off, 0, 0);
     g.filter = 'none';
     return fresh;
-  },
-});
-
-/* Homes layer: a canvas anchored to meta.bounds through the SAME positioning path
-   as the fire canvas, so homes can never drift against the grid. The backing store
-   is resized to match screen resolution on zoomend (capped), and homes are drawn at
-   their true sub-cell position (mercator-correct fx/fy fractions of the bounds).
-   `states` is shared with the render loop: 0 standing, 1 burned, 2 saved. */
-const HousesLayer = L.Layer.extend({
-  initialize(bounds, fx, fy, states, opts) {
-    L.setOptions(this, opts);
-    this._b = bounds; this._fx = fx; this._fy = fy; this._st = states;
-    this._sprites = {};
-  },
-  onAdd() {
-    this._canvas = L.DomUtil.create('canvas', 'houses-canvas leaflet-zoom-animated');
-    this._ctx = this._canvas.getContext('2d');
-    this.getPane().appendChild(this._canvas);
-    this._resize();
-  },
-  onRemove() { this._canvas.remove(); },
-  getEvents() {
-    const ev = { zoom: this._reset, viewreset: this._resize, zoomend: this._resize };
-    if (this._zoomAnimated) ev.zoomanim = this._animateZoom;
-    return ev;
-  },
-  _place() {
-    const nw = this._map.latLngToLayerPoint(this._b.getNorthWest());
-    const se = this._map.latLngToLayerPoint(this._b.getSouthEast());
-    L.DomUtil.setPosition(this._canvas, nw);
-    this._canvas.style.width = `${se.x - nw.x}px`;
-    this._canvas.style.height = `${se.y - nw.y}px`;
-    return [se.x - nw.x, se.y - nw.y];
-  },
-  _reset() { this._place(); },
-  _resize() {
-    const [w, h] = this._place();
-    const W = Math.max(64, Math.min(4096, Math.round(w)));
-    const H = Math.max(64, Math.round(W * (h / Math.max(w, 1))));
-    if (this._canvas.width !== W || this._canvas.height !== H) {
-      this._canvas.width = W; this._canvas.height = H;
-    }
-    this._scale = w / W;   // CSS stretch past the 4096 cap; sprites compensate
-    this.redraw();
-  },
-  _animateZoom(e) {
-    const nb = this._map._latLngBoundsToNewLayerBounds(this._b, e.zoom, e.center);
-    L.DomUtil.setTransform(this._canvas, nb.min, this._map.getZoomScale(e.zoom));
-  },
-  _sprite(icon, kind) {   // kind: 0 standing, 1 burned, 2 saved (green ring)
-    const key = `${icon}-${kind}`;
-    if (this._sprites[key]) return this._sprites[key];
-    const s = icon ? 12 : 8;
-    const cv = document.createElement('canvas');
-    cv.width = s; cv.height = s;
-    const c = cv.getContext('2d');
-    const fill = kind === 1 ? '#ff3b3b' : 'rgba(216,216,211,0.8)';
-    if (icon) {           // 6 px house pictogram: roof triangle + square body
-      const p = new Path2D();
-      p.moveTo(6, 2.2); p.lineTo(2.6, 5.6); p.lineTo(3.4, 5.6); p.lineTo(3.4, 9.4);
-      p.lineTo(8.6, 9.4); p.lineTo(8.6, 5.6); p.lineTo(9.4, 5.6); p.closePath();
-      c.strokeStyle = '#0a0b0d'; c.lineWidth = 2; c.stroke(p);   // 1 px dark edge
-      c.fillStyle = fill; c.fill(p);
-      if (kind === 2) { c.strokeStyle = '#3ddc84'; c.lineWidth = 1; c.stroke(p); }
-    } else {              // 2×2 square with a 1 px dark edge
-      c.fillStyle = '#0a0b0d'; c.fillRect(2, 2, 4, 4);
-      c.fillStyle = fill; c.fillRect(3, 3, 2, 2);
-      if (kind === 2) { c.strokeStyle = '#3ddc84'; c.strokeRect(1.5, 1.5, 5, 5); }
-    }
-    return (this._sprites[key] = cv);
-  },
-  redraw() {
-    const cv = this._canvas, ctx = this._ctx, w = cv.width, h = cv.height;
-    const icon = this._map.getZoom() >= 14;
-    const sc = this._scale || 1;
-    const size = (icon ? 12 : 8) / sc, half = size / 2;   // constant on-screen size
-    const spr = [this._sprite(icon, 0), this._sprite(icon, 1), this._sprite(icon, 2)];
-    const fx = this._fx, fy = this._fy, st = this._st;
-    ctx.clearRect(0, 0, w, h);
-    if (sc === 1) {
-      for (let i = 0; i < fx.length; i++) {
-        ctx.drawImage(spr[st[i]], Math.round(fx[i] * w) - half, Math.round(fy[i] * h) - half);
-      }
-    } else {
-      for (let i = 0; i < fx.length; i++) {
-        ctx.drawImage(spr[st[i]], fx[i] * w - half, fy[i] * h - half, size, size);
-      }
-    }
   },
 });
 
@@ -659,7 +607,8 @@ async function main() {
 
   const map = L.map('map', { zoomSnap: 0.25, maxZoom: 17 });
   map.fitBounds(bounds, { padding: [10, 10] });
-  ['fire', 'houses'].forEach((n, i) => { map.createPane(n).style.zIndex = 405 + i; });
+  map.createPane('fire').style.zIndex = 405;
+  window._fb = { map };   // debug/test handle
 
   const windDir = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(meta.wind.from_deg / 45) % 8];
   const statusBits = mode => [
@@ -671,21 +620,25 @@ async function main() {
     $('legend').hidden = !mode.startsWith('OFFLINE');
   });
 
-  // Buildings → flat arrays; `states` is shared with HousesLayer (0/1/2).
+  // Buildings → flat arrays; homes render inside the fire canvas (2× grid px,
+  // mercator-correct sub-cell position, clamped so the saved-ring fits).
   const feats = buildingsFC.features, nB = feats.length;
   const cells = new Uint32Array(nB), states = new Uint8Array(nB);
-  const fx = new Float32Array(nB), fy = new Float32Array(nB);
+  const hx = new Int32Array(nB), hy = new Int32Array(nB);
   const yN = merc(b.north), yS = merc(b.south);
+  const W2 = cols * 2, H2 = rows * 2;
   feats.forEach((f, i) => {
     cells[i] = f.properties.row * cols + f.properties.col;
     const [lon, lat] = f.geometry.coordinates;
-    fx[i] = (lon - b.west) / (b.east - b.west);
-    fy[i] = (yN - merc(lat)) / (yN - yS);
+    const gx = ((lon - b.west) / (b.east - b.west)) * W2;
+    const gy = ((yN - merc(lat)) / (yN - yS)) * H2;
+    hx[i] = Math.min(W2 - 3, Math.max(1, Math.round(gx) - 1));
+    hy[i] = Math.min(H2 - 3, Math.max(1, Math.round(gy) - 1));
   });
   $('homes-label').textContent = `02 — Homes saved (of ${nB.toLocaleString()})`;
 
   const fire = new FireLayer(bounds, rows, cols, { pane: 'fire' }).addTo(map);
-  const houses = new HousesLayer(bounds, fx, fy, states, { pane: 'houses' }).addTo(map);
+  fire.setHomes(hx, hy, states);
   // 6:30 AM is the Camp Fire's ignition time — hard-coded until meta grows a field.
   L.marker([meta.ignition.lat, meta.ignition.lon], {
     interactive: false, keyboard: false,
@@ -766,7 +719,6 @@ async function main() {
     const fresh = fire.draw(arrival, t);
     maxFresh = Math.max(maxFresh, fresh);
     audio.setLevel(fresh / maxFresh);
-    houses.redraw();
     waffle.draw(hit, saved);
     updateStats();
     $('time-label').textContent = fmtTime(t);
