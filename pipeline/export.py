@@ -233,8 +233,8 @@ def run(town: str) -> None:
             f"One uniform historical wind ({cfg['wind']['speed_mph']:g} mph from "
             f"{cfg['wind']['from_deg']:g} degrees) for all "
             f"{horizon // 60} hours; no ember spotting, no weather change.",
-            "Fuel breaks slow fire 20x rather than stopping it; costs are rough "
-            "mechanical-treatment magnitudes, not bids.",
+            f"Fuel breaks slow fire {round(1 / params['break_mult'])}x rather than "
+            f"stopping it; costs are rough mechanical-treatment magnitudes, not bids.",
             f"Fuels are {gm['fuel']['product']}, terrain {gm['terrain']}, both "
             f"resampled to a {gm['cell_m']:g} m grid.",
         ],
