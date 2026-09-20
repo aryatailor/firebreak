@@ -147,8 +147,9 @@ def build_proxy_buildings(geom: dict, fuel: np.ndarray, cfg: dict) -> tuple[dict
            "lat": lat[order], "lon": lon[order]}
     info = {"source": "proxy: developed-land cells scaled to pre-fire home count",
             "count": target, "proxy": True, "urban_cells": n_urban,
-            "simplification": "Homes are estimated from developed-land cells at "
-                              "2018 density, not individual footprints."}
+            "simplification": cfg.get(
+                "homes_note", "Homes are estimated from developed-land cells at "
+                              "pre-fire density, not individual footprints.")}
     print(f"  homes: {target} proxy points over {n_urban} urban cells "
           f"(homes_estimate; OSM stays cached but unused)")
     return arr, info
@@ -238,16 +239,18 @@ def run(town: str, cell_m: float = 60.0, quick: bool = False) -> None:
 
     fuel_check = None
     if status["fuel_terrain"]["source"] == "landfire-lfps":
+        import fetch_data
+        fuel_layer, elev_layer = fetch_data.landfire_layers(cfg)
         bands = json.loads((raw / "landfire_bands.json").read_text(encoding="utf-8"))
-        print("  reprojecting LANDFIRE bands (local Albers -> EPSG:3857) ...")
-        fuel = reproject_band(bands["LF2016_FBFM40"]["path"],
-                              bands["LF2016_FBFM40"]["band"],
+        print(f"  reprojecting LANDFIRE bands {fuel_layer}+{elev_layer} "
+              f"(local Albers -> EPSG:3857) ...")
+        fuel = reproject_band(bands[fuel_layer]["path"], bands[fuel_layer]["band"],
                               geom, categorical=True, dst_nodata=-1)
-        elev = reproject_band(bands["LF2020_Elev"]["path"], bands["LF2020_Elev"]["band"],
+        elev = reproject_band(bands[elev_layer]["path"], bands[elev_layer]["band"],
                               geom, categorical=False, dst_nodata=-9999.0)
         fuel_check = check_fuel_prefire(fuel, geom, cfg, town)
-        fuel_product = "LANDFIRE LF2016_FBFM40 (LF 2016 Remap, pre-fire)"
-        terrain_source = "LANDFIRE LF2020_Elev"
+        fuel_product = f"LANDFIRE {fuel_layer} (pre-fire vintage)"
+        terrain_source = f"LANDFIRE {elev_layer}"
     else:
         print("  reprojecting WorldCover + Copernicus DEM (fallback source) ...")
         wc = reproject_band(str(raw / "worldcover.tif"), 1, geom,

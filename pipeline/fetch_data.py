@@ -38,9 +38,16 @@ import requests
 
 import common
 
-LANDFIRE_LAYERS = ["LF2016_FBFM40", "LF2020_Elev"]
+DEFAULT_FUEL_LAYER = "LF2016_FBFM40"
+ELEV_LAYER = "LF2020_Elev"      # the only elevation vintage; terrain doesn't change
 LFPS_API = "https://lfps.usgs.gov/api"
 LFPS_EMAIL = "zdspeck@asu.edu"  # LFPS requires an email param; no key, no account
+
+
+def landfire_layers(cfg: dict) -> list[str]:
+    """Per-town fuel vintage (towns/<town>.json fuel_layer - e.g. Paradise wants
+    the newest pre-2018 layer, Altadena the newest pre-2025) + the one elevation."""
+    return [cfg.get("fuel_layer", DEFAULT_FUEL_LAYER), ELEV_LAYER]
 
 OVERPASS_MIRRORS = [
     "https://overpass-api.de/api/interpreter",
@@ -63,21 +70,22 @@ def landfire_worker(town: str) -> None:
     enforce a hard wall-clock timeout on the whole exchange."""
     cfg = common.load_town(town)
     raw = common.raw_dir(town)
+    layers = landfire_layers(cfg)
 
     r = requests.get(f"{LFPS_API}/products", timeout=60, headers=HTTP_HEADERS)
     r.raise_for_status()
     available = {p.get("layerName") for p in r.json().get("products", [])}
-    missing = [l for l in LANDFIRE_LAYERS if l not in available]
+    missing = [l for l in layers if l not in available]
     if missing:
         sys.exit(f"layer codes not present in the live LFPS product table: {missing} "
                  f"- refusing to guess (plan section 2)")
-    print(f"  live LFPS product table confirms layers: {LANDFIRE_LAYERS}")
+    print(f"  live LFPS product table confirms layers: {layers}")
 
     b = cfg["bounds"]
     aoi = f"{b['west']} {b['south']} {b['east']} {b['north']}"
     r = requests.get(f"{LFPS_API}/job/submit",
                      params={"Email": LFPS_EMAIL,
-                             "Layer_List": ";".join(LANDFIRE_LAYERS),
+                             "Layer_List": ";".join(layers),
                              "Area_of_Interest": aoi},
                      timeout=60, headers=HTTP_HEADERS)
     r.raise_for_status()
@@ -115,7 +123,7 @@ def landfire_worker(town: str) -> None:
     print(f"  LFPS done: {out_zip.stat().st_size / 1e6:.1f} MB")
 
 
-def _landfire_band_map(lf_dir: Path) -> dict:
+def _landfire_band_map(lf_dir: Path, layers: list[str]) -> dict:
     """Map each requested layer -> (tif path, band). LFPS normally returns one
     multiband tif in request order; also handles one-tif-per-layer. Anything else
     fails loud."""
@@ -124,14 +132,14 @@ def _landfire_band_map(lf_dir: Path) -> dict:
     tifs = sorted(p for p in lf_dir.rglob("*.tif") if not p.name.endswith(".aux.tif"))
     if len(tifs) == 1:
         with rasterio.open(tifs[0]) as src:
-            if src.count != len(LANDFIRE_LAYERS):
+            if src.count != len(layers):
                 raise RuntimeError(f"{tifs[0]} has {src.count} bands, expected "
-                                   f"{len(LANDFIRE_LAYERS)} ({LANDFIRE_LAYERS})")
+                                   f"{len(layers)} ({layers})")
         return {layer: {"path": str(tifs[0]), "band": i + 1}
-                for i, layer in enumerate(LANDFIRE_LAYERS)}
-    if len(tifs) == len(LANDFIRE_LAYERS):
+                for i, layer in enumerate(layers)}
+    if len(tifs) == len(layers):
         mapping = {}
-        for layer in LANDFIRE_LAYERS:
+        for layer in layers:
             match = [t for t in tifs if layer.lower() in t.name.lower()]
             if len(match) != 1:
                 raise RuntimeError(f"cannot match layer {layer} to one of "
@@ -142,13 +150,15 @@ def _landfire_band_map(lf_dir: Path) -> dict:
                        f"{[t.name for t in tifs]}")
 
 
-def fetch_landfire(town: str, raw: Path, timeout_min: float, force: bool) -> dict | None:
+def fetch_landfire(town: str, raw: Path, timeout_min: float, force: bool,
+                   layers: list[str]) -> dict | None:
     """Returns the layer->band mapping on success (cached or fresh), None on
     timeout/failure (caller falls back). The subprocess is killed at the deadline."""
     bands_json = raw / "landfire_bands.json"
     if bands_json.exists() and not force:
         mapping = json.loads(bands_json.read_text(encoding="utf-8"))
-        if all(Path(v["path"]).exists() for v in mapping.values()):
+        if (all(l in mapping for l in layers)
+                and all(Path(v["path"]).exists() for v in mapping.values())):
             print(f"  LANDFIRE cached ({bands_json})")
             return mapping
 
@@ -197,7 +207,7 @@ def fetch_landfire(town: str, raw: Path, timeout_min: float, force: bool) -> dic
         lf_dir.mkdir()
         with zipfile.ZipFile(raw / "landfire.zip") as z:
             z.extractall(lf_dir)
-        mapping = _landfire_band_map(lf_dir)
+        mapping = _landfire_band_map(lf_dir, layers)
     except Exception as e:
         common.log_event("fetch", town,
                          f"LANDFIRE zip unusable ({type(e).__name__}: {e}) - falling "
@@ -334,9 +344,10 @@ def fetch_buildings(cfg: dict, raw: Path, force: bool) -> dict:
 def run(town: str, force: bool = False, timeout_min: float = 20.0) -> None:
     cfg = common.load_town(town)
     raw = common.raw_dir(town)
-    print(f"fetch_data: town={town} ({cfg['name']}) -> {raw}")
+    layers = landfire_layers(cfg)
+    print(f"fetch_data: town={town} ({cfg['name']}) layers={layers} -> {raw}")
 
-    band_map = fetch_landfire(town, raw, timeout_min, force)
+    band_map = fetch_landfire(town, raw, timeout_min, force, layers)
     if band_map is None:
         fetch_fallback(cfg, raw, force)
         fuel_terrain = {"source": "worldcover+copdem", "fallback": True,
@@ -344,7 +355,7 @@ def run(town: str, force: bool = False, timeout_min: float = 20.0) -> None:
                                   "(LANDFIRE unavailable within timeout)"}
     else:
         fuel_terrain = {"source": "landfire-lfps", "fallback": False,
-                        "layers": LANDFIRE_LAYERS}
+                        "layers": layers}
 
     buildings = fetch_buildings(cfg, raw, force)
 

@@ -38,6 +38,14 @@ def out_dir(town: str) -> Path:
     return p
 
 
+def web_dir(cfg: dict) -> Path:
+    """Where export writes this town's web file set. Paradise predates the town
+    selector and lives at the legacy web/data/; later towns at web/towns/<id>/."""
+    p = REPO / "web" / cfg.get("web_dir", "data")
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 # --- town config ----------------------------------------------------------------
 
 def load_town(town: str) -> dict:

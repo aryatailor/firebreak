@@ -1,0 +1,14 @@
+{
+  "name": "Altadena, CA",
+  "story": "Altadena, California. 6:18 PM, January 7, 2025. The Eaton Fire started here.",
+  "bounds": {"west": -118.22, "south": 34.13, "east": -118.02, "north": 34.27},
+  "ignition": {"lat": 34.19, "lon": -118.09, "label": "Eaton Canyon · 6:18 PM"},
+  "wind": {"speed_mph": 45, "from_deg": 60},
+  "town_center": {"lat": 34.19, "lon": -118.13},
+  "homes_estimate": 15000,
+  "homes_note": "Homes are estimated from developed-land cells at pre-fire density, not individual footprints.",
+  "fuel_layer": "LF2024_FBFM40",
+  "web_dir": "towns/altadena",
+  "horizon_min": 720,
+  "budgets": [500000, 1000000, 2000000, 3000000, 5000000]
+}

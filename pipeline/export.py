@@ -119,8 +119,8 @@ def run(town: str) -> None:
     cand_cells = {int(i): (z["flat_r"][s:s + n], z["flat_c"][s:s + n])
                   for i, (s, n) in enumerate(zip(z["starts"], z["lengths"]))}
 
-    web = common.WEB_DATA
-    web.mkdir(parents=True, exist_ok=True)
+    web = common.web_dir(cfg)
+    print(f"  export target: {web}")
 
     # --- baseline ---------------------------------------------------------------
     base_arr = sim.arrival(params)
@@ -228,13 +228,15 @@ def run(town: str) -> None:
             gm["buildings"].get("simplification",
                                 "Homes are estimated from developed-land cells."),
             "Fire spread is a calibrated graph travel-time model (Dijkstra), "
-            "not fire physics - one free speed parameter fit to the 2018 outcome.",
-            "One uniform historical wind (35 mph from the northeast) for all 12 "
-            "hours; no ember spotting, no weather change.",
+            "not fire physics - one free speed parameter fit to the historical "
+            "outcome.",
+            f"One uniform historical wind ({cfg['wind']['speed_mph']:g} mph from "
+            f"{cfg['wind']['from_deg']:g} degrees) for all "
+            f"{horizon // 60} hours; no ember spotting, no weather change.",
             "Fuel breaks slow fire 20x rather than stopping it; costs are rough "
             "mechanical-treatment magnitudes, not bids.",
-            "Fuels are LANDFIRE 2016 (pre-fire), terrain LANDFIRE 2020, both "
-            "resampled to a 60 m grid.",
+            f"Fuels are {gm['fuel']['product']}, terrain {gm['terrain']}, both "
+            f"resampled to a {gm['cell_m']:g} m grid.",
         ],
     }
 

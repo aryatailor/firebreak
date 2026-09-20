@@ -6,6 +6,8 @@
   "wind": {"speed_mph": 35, "from_deg": 45},
   "town_center": {"lat": 39.7596, "lon": -121.6219},
   "homes_estimate": 11000,
+  "homes_note": "Homes are estimated from developed-land cells at 2018 density, not individual footprints.",
+  "fuel_layer": "LF2016_FBFM40",
   "horizon_min": 720,
   "budgets": [500000, 1000000, 2000000, 3000000, 5000000]
 }
