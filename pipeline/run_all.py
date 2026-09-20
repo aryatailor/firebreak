@@ -15,14 +15,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-import common
-import fetch_data
 import build_grid
 import calibrate
-import simulate
 import candidates
-import solve
+import common
+import ensemble
 import export
+import fetch_data
+import simulate
+import solve
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="assume pipeline/data_raw/<town>/ is already populated")
     p.add_argument("--force", action="store_true",
                    help="re-download inputs even if cached")
+    p.add_argument("--robust", action="store_true",
+                   help="generate ensemble scenarios and run robust solve")
     return p
 
 
@@ -52,7 +55,11 @@ def main(argv=None) -> None:
     common.run_stage("calibrate", args.town, lambda: calibrate.run(args.town))
     common.run_stage("simulate", args.town, lambda: simulate.run(args.town))
     common.run_stage("candidates", args.town, lambda: candidates.run(args.town))
-    common.run_stage("solve", args.town, lambda: solve.run(args.town))
+    if args.robust:
+        common.run_stage("ensemble", args.town,
+                         lambda: ensemble.run(args.town))
+    common.run_stage("solve", args.town,
+                     lambda: solve.run(args.town, robust=args.robust))
     common.run_stage("export", args.town, lambda: export.run(args.town))
 
     print("\nrun_all: full chain done - web/data is live. "

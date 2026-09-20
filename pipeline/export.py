@@ -25,13 +25,12 @@ import json
 import shutil
 import sys
 
-import numpy as np
-
 import common
-import ros
-from simulate import Simulator, to_uint16
-from candidates import cell_costs
+import numpy as np
 from calibrate import ring_break_mask
+from candidates import cell_costs
+from robust import make_pool, scenario_hit
+from simulate import Simulator, to_uint16
 
 
 def b64_grid(arrival: np.ndarray, horizon: int) -> str:
@@ -49,7 +48,7 @@ def b64_grid_u8(arrival: np.ndarray, horizon: int) -> str:
 def cells_to_geojson_feature(sim: Simulator, rr, cc, props: dict,
                              decimals: int = 5) -> dict:
     """Union of cell squares (in Mercator, planar) -> (Multi)Polygon in 4326."""
-    from shapely.geometry import box, mapping
+    from shapely.geometry import box
     from shapely.ops import unary_union
 
     g = sim.geom
@@ -189,6 +188,55 @@ def run(town: str) -> None:
     print(f"  steps.json: {len(steps)} entries (step 0 = baseline + "
           f"{len(accepted)} greedy steps)")
 
+    robust_data = None
+    if solve.get("objective") == "ensemble":
+        ensemble_path = out / "ensemble.json"
+        ensemble_data = json.loads(ensemble_path.read_text(encoding="utf-8"))
+        scenarios = ensemble_data["scenarios"]
+        robust_steps = []
+        robust_mask = np.zeros(sim.fuel.shape, dtype=bool)
+        prefix_masks = [(0.0, robust_mask.copy())]
+        for item in accepted:
+            rr, cc = cand_cells[item["id"]]
+            robust_mask[rr, cc] = True
+            prefix_masks.append((float(item["cum_cost"]), robust_mask.copy()))
+        with make_pool(town, params, scenarios) as pool:
+            for step, (cum_cost, prefix_mask) in enumerate(prefix_masks):
+                hit_pairs = pool.map(
+                    scenario_hit,
+                    [(scenario_id, prefix_mask)
+                     for scenario_id in range(len(scenarios))],
+                )
+                hits = np.zeros(len(scenarios), dtype=float)
+                for scenario_id, hit in hit_pairs:
+                    hits[scenario_id] = hit
+                baseline_hits = np.asarray(
+                    [s["baseline_homes_hit"] for s in scenarios], dtype=float
+                )
+                saved = baseline_hits - hits
+                robust_steps.append(
+                    {
+                        "step": step,
+                        "cum_cost": round(cum_cost),
+                        "mean_saved": round(
+                            float(np.dot(
+                                np.asarray([s["weight"] for s in scenarios]),
+                                saved,
+                            )),
+                            1,
+                        ),
+                        "min_saved": int(saved.min()),
+                        "max_saved": int(saved.max()),
+                        "per_scenario_saved": [int(v) for v in saved],
+                    }
+                )
+        robust_data = {
+            "scenarios": scenarios,
+            "steps": robust_steps,
+        }
+        print(f"  robust.json: {len(robust_steps)} prefix steps x "
+              f"{len(scenarios)} scenarios")
+
     # --- ring fallback (Zach: ship this if the solver's breaks are ugly) --------
     ring = ring_break_mask(sim)
     rr, cc = np.nonzero(ring)
@@ -227,16 +275,16 @@ def run(town: str) -> None:
         "simplifications": [
             gm["buildings"].get("simplification",
                                 "Homes are estimated from developed-land cells."),
-            "Fire spread is a calibrated graph travel-time model (Dijkstra), "
-            "not fire physics - one free speed parameter fit to the historical "
-            "outcome.",
-            f"One uniform historical wind ({cfg['wind']['speed_mph']:g} mph from "
-            f"{cfg['wind']['from_deg']:g} degrees) for all "
-            f"{horizon // 60} hours; no ember spotting, no weather change.",
-            f"Fuel breaks slow fire {round(1 / params['break_mult'])}x rather than "
-            f"stopping it; costs are rough mechanical-treatment magnitudes, not bids.",
-            f"Fuels are {gm['fuel']['product']}, terrain {gm['terrain']}, both "
-            f"resampled to a {gm['cell_m']:g} m grid.",
+            ("Fire spread is a calibrated graph travel-time model (Dijkstra), "
+             "not fire physics - one free speed parameter fit to the historical "
+             "outcome."),
+            (f"One uniform historical wind ({cfg['wind']['speed_mph']:g} mph from "
+             f"{cfg['wind']['from_deg']:g} degrees) for all "
+             f"{horizon // 60} hours; no ember spotting, no weather change."),
+            (f"Fuel breaks slow fire {round(1 / params['break_mult'])}x rather than "
+             "stopping it; costs are rough mechanical-treatment magnitudes, not bids."),
+            (f"Fuels are {gm['fuel']['product']}, terrain {gm['terrain']}, both "
+             f"resampled to a {gm['cell_m']:g} m grid."),
         ],
     }
 
@@ -259,6 +307,8 @@ def run(town: str) -> None:
             "fuel_legend.json": [{"group": g, "color": c}
                                  for g, c in common.GROUP_COLORS.items()],
         }
+        if robust_data is not None:
+            files["robust.json"] = robust_data
         for name, obj in files.items():
             (web / name).write_text(json.dumps(obj, separators=(",", ":")),
                                     encoding="utf-8")
@@ -278,9 +328,10 @@ def run(town: str) -> None:
     sizes = {f.name: round(f.stat().st_size / 1e6, 3) for f in sorted(web.iterdir())}
     print(f"  web/data sizes (MB): {json.dumps(sizes)}")
     print(f"export OK: web/data = {total:.2f} MB <= {SIZE_CAP:.0f} MB, "
-          f"{len(steps)} slider steps ({datetime.date.today().isoformat()})")
-    print(f"\nverify: python -m http.server -d web 8000, flip DATA_DIR to 'data' "
-          f"(frontend session does this)")
+          f"{len(steps)} slider steps "
+          f"({datetime.datetime.now(datetime.timezone.utc).date().isoformat()})")
+    print("\nverify: python -m http.server -d web 8000, flip DATA_DIR to 'data' "
+          "(frontend session does this)")
 
 
 def build_parser() -> argparse.ArgumentParser:
