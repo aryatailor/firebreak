@@ -626,10 +626,13 @@ async function loadPlans() {
     if (model.steps[i]) model.steps[i].saved = s.per_scenario_saved[0];
   });
   let cum = 0;
-  const histSteps = histPlan.steps.map(s => {
+  const histScored = robust.historical_plan.steps;
+  const histSteps = histPlan.steps.map((s, i) => {
     cum += (s.break_ids || []).length;
+    const scored = histScored[i];
     return {
-      cost: s.cumulative_cost, saved: s.cumulative_saved,
+      cost: s.cumulative_cost,
+      saved: scored ? scored.per_scenario_saved[0] : s.cumulative_saved,
       minutesBought: s.minutes_bought == null ? null : s.minutes_bought,
       breakCount: cum, live: true,
     };
