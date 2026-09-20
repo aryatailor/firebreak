@@ -249,6 +249,16 @@ solver shape (§7), schema freeze (§8). Everything else is mechanics.**
 
 ## Deviations
 
+- **Calibration selection (2026-09-19, first live sweep)**: the plan's joint target
+  ("town center in 2–4 h" AND "60–90% of homes hit at horizon") is infeasible under
+  this model — any scale fast enough for a 2–4 h town center burns the whole box
+  well inside 12 h (wildland flows around town and ignites every lobe locally), so
+  homes hit is ~100% and a break's delay is invisible at the horizon. Conservative
+  option: keep the binding target (60–90% hit — what lets breaks matter), report
+  arrival time instead of filtering on it, and add structure_rate to the sweep.
+  The chosen point is arguably MORE historical: first home hit at 59 min (real fire
+  ~90 min); the tail is the all-day structure-to-structure burn. Gate passed at the
+  plan's break_mult 0.05 (52.8% drop) — no break-strength change was needed.
 - **LFPS transport (2026-09-19, fetch time)**: the landfire package's BASE_URL (the
   old ArcGIS GPServer endpoint) is retired — it now serves the LANDFIRE web app's
   HTML, so `request_data` dies parsing JSON. The live service is a REST API at
@@ -299,6 +309,16 @@ Where web/ goes beyond or interprets DESIGN.md; nothing here touches CONTRACT.md
   end-state number during the whole sweep.
 - **Panel footer** shows basemap mode (offline/satellite) and the active data dir —
   demo-day sanity indicators.
+- **Design+UX pass (Zach, 2026-09-19), sections 1–2 shipped** — fire de-stickered
+  (no PNG over satellite online; feathered 40 px offline; 2× fire canvas + 1.2 px
+  blur; fresh front 0.55 α with seeded flicker, body 0.85, charcoal #1a1a1a at 0.70),
+  pulsing ignition marker ("Pulga · 6:30 AM" — the time is hard-coded until meta
+  grows an ignition.time field), homes as 2×2/3×3 px squares (grey/red/green-ring),
+  waffle grid replaces the curve as the primary visual (curve now under "Explore
+  budgets" with a sentence callout). Satellite brightness(0.72) saturate(0.8) applied
+  early (it's §5 but §1's "fire is the only saturated thing" needs it). Sections 3–5
+  (opening, guided flow, look system) pending checkpoint. DESIGN.md rewrite lands
+  with them.
 - **Mid-build design change (Zach, 2026-09-19), superseding DESIGN.md §Map layers:**
   (1) default basemap is now satellite tiles with basemap.png blended over at **35%
   opacity** for relief (offline fallback = the same PNG at 100%). Since the PNG now

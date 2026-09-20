@@ -18,6 +18,8 @@ import sys
 import common
 import fetch_data
 import build_grid
+import calibrate
+import simulate
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,9 +46,11 @@ def main(argv=None) -> None:
                          lambda: fetch_data.run(args.town, force=args.force))
     common.run_stage("grid", args.town,
                      lambda: build_grid.run(args.town, quick=args.quick))
+    common.run_stage("calibrate", args.town, lambda: calibrate.run(args.town))
+    common.run_stage("simulate", args.town, lambda: simulate.run(args.town))
 
-    print("\nrun_all: fetch + grid done. Later stages (simulate, calibrate, "
-          "candidates, solve, export) land next - see implementation-notes.md.")
+    print("\nrun_all: fetch + grid + calibrate + baseline done. Later stages "
+          "(candidates, solve, export) land next - see implementation-notes.md.")
     sys.exit(0)
 
 

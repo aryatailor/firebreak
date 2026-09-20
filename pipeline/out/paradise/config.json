@@ -1,0 +1,267 @@
+{
+  "town": "paradise",
+  "params": {
+    "scale": 30.0,
+    "k_w": 0.45,
+    "structure_rate": 0.08,
+    "break_mult": 0.05
+  },
+  "target": {
+    "frac_homes_hit": [
+      0.6,
+      0.9
+    ]
+  },
+  "calibration_table": [
+    {
+      "scale": 30.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 115.8,
+      "minutes_to_town": 1139.5,
+      "frac_homes_hit": 0.2455,
+      "sim_seconds": 0.102
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 116.9,
+      "minutes_to_town": 1298.5,
+      "frac_homes_hit": 0.2222,
+      "sim_seconds": 0.107
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 82.4,
+      "minutes_to_town": 866.5,
+      "frac_homes_hit": 0.4833,
+      "sim_seconds": 0.114
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 83.2,
+      "minutes_to_town": 982.9,
+      "frac_homes_hit": 0.4395,
+      "sim_seconds": 0.102
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 58.6,
+      "minutes_to_town": 660.3,
+      "frac_homes_hit": 0.7944,
+      "sim_seconds": 0.109
+    },
+    {
+      "scale": 30.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 59.3,
+      "minutes_to_town": 745.1,
+      "frac_homes_hit": 0.7059,
+      "sim_seconds": 0.149
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 77.2,
+      "minutes_to_town": 759.6,
+      "frac_homes_hit": 0.6901,
+      "sim_seconds": 0.105
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 77.9,
+      "minutes_to_town": 865.7,
+      "frac_homes_hit": 0.6273,
+      "sim_seconds": 0.101
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 54.9,
+      "minutes_to_town": 577.6,
+      "frac_homes_hit": 0.9395,
+      "sim_seconds": 0.108
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 55.5,
+      "minutes_to_town": 655.3,
+      "frac_homes_hit": 0.8845,
+      "sim_seconds": 0.108
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 39.1,
+      "minutes_to_town": 440.2,
+      "frac_homes_hit": 0.9679,
+      "sim_seconds": 0.106
+    },
+    {
+      "scale": 45.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 39.5,
+      "minutes_to_town": 496.7,
+      "frac_homes_hit": 0.9662,
+      "sim_seconds": 0.102
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 57.9,
+      "minutes_to_town": 569.7,
+      "frac_homes_hit": 0.9786,
+      "sim_seconds": 0.105
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 58.4,
+      "minutes_to_town": 649.3,
+      "frac_homes_hit": 0.93,
+      "sim_seconds": 0.104
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 41.2,
+      "minutes_to_town": 433.2,
+      "frac_homes_hit": 0.9863,
+      "sim_seconds": 0.103
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 41.6,
+      "minutes_to_town": 491.4,
+      "frac_homes_hit": 0.9852,
+      "sim_seconds": 0.107
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 29.3,
+      "minutes_to_town": 330.1,
+      "frac_homes_hit": 0.9857,
+      "sim_seconds": 0.127
+    },
+    {
+      "scale": 60.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 29.6,
+      "minutes_to_town": 372.6,
+      "frac_homes_hit": 0.9826,
+      "sim_seconds": 0.102
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.25,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 38.6,
+      "minutes_to_town": 379.8,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.11
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.25,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 39.0,
+      "minutes_to_town": 432.8,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.143
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.35,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 27.5,
+      "minutes_to_town": 288.8,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.202
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.35,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 27.7,
+      "minutes_to_town": 327.6,
+      "frac_homes_hit": 1.0,
+      "sim_seconds": 0.205
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.45,
+      "structure_rate": 0.15,
+      "minutes_to_first_home": 19.5,
+      "minutes_to_town": 220.1,
+      "frac_homes_hit": 0.998,
+      "sim_seconds": 0.213
+    },
+    {
+      "scale": 90.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "minutes_to_first_home": 19.8,
+      "minutes_to_town": 248.4,
+      "frac_homes_hit": 0.9972,
+      "sim_seconds": 0.244
+    }
+  ],
+  "gate": {
+    "ring_cells": 4701,
+    "required_drop": 0.3,
+    "attempts": [
+      {
+        "scale": 30.0,
+        "k_w": 0.45,
+        "structure_rate": 0.08,
+        "break_mult": 0.05,
+        "homes_hit": 7765,
+        "ringed_homes_hit": 3664,
+        "drop_frac": 0.5281
+      }
+    ],
+    "passed": true,
+    "chosen": {
+      "scale": 30.0,
+      "k_w": 0.45,
+      "structure_rate": 0.08,
+      "break_mult": 0.05,
+      "homes_hit": 7765,
+      "ringed_homes_hit": 3664,
+      "drop_frac": 0.5281
+    }
+  },
+  "ignition_cell": [
+    122,
+    377
+  ],
+  "town_center_cell": [
+    186,
+    111
+  ],
+  "generated": "2026-09-19T22:17:24"
+}
